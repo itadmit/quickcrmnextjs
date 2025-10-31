@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   DndContext,
   useDroppable,
+  useDraggable,
   DragEndEvent,
   DragOverEvent,
   PointerSensor,
@@ -11,14 +12,7 @@ import {
   useSensors,
   DragOverlay,
   closestCorners,
-  UniqueIdentifier,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-  arrayMove,
-} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Calendar } from "lucide-react";
 
@@ -54,45 +48,8 @@ export default function TaskBoard({ initialTasks }: { initialTasks: Task[] }) {
   );
 
   function onDragOver(event: DragOverEvent) {
-    const { active, over } = event;
-    
-    if (!over) {
-      setOverId(null);
-      return;
-    }
-
-    const activeId = String(active.id);
-    const overId = String(over.id);
-
-    // Find active and over tasks
-    const activeTask = items.find((t) => t.id === activeId);
-    const overTask = items.find((t) => t.id === overId);
-
-    if (!activeTask) return;
-
-    // If over a column (not a task), just highlight the column
-    if (!overTask) {
-      setOverId(overId);
-      return;
-    }
-
-    // If dragging within the same column, reorder
-    if (activeTask.status === overTask.status) {
-      setItems((prev) => {
-        const oldIndex = prev.findIndex((t) => t.id === activeId);
-        const newIndex = prev.findIndex((t) => t.id === overId);
-        return arrayMove(prev, oldIndex, newIndex);
-      });
-    } else {
-      // Moving to a different column
-      setItems((prev) =>
-        prev.map((t) =>
-          t.id === activeId ? { ...t, status: overTask.status } : t
-        )
-      );
-    }
-
-    setOverId(overId);
+    const { over } = event;
+    setOverId(over ? String(over.id) : null);
   }
 
   async function onDragEnd(event: DragEndEvent) {
@@ -103,20 +60,12 @@ export default function TaskBoard({ initialTasks }: { initialTasks: Task[] }) {
     if (!over) return;
 
     const taskId = String(active.id);
-    const activeTask = items.find((t) => t.id === taskId);
-    const overTask = items.find((t) => t.id === String(over.id));
-    
-    if (!activeTask) return;
+    const newStatus = String(over.id) as TaskStatus;
 
-    let newStatus = activeTask.status;
-
-    // If dropped on a column (not a task)
-    if (!overTask) {
-      newStatus = String(over.id) as TaskStatus;
-      setItems((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-      );
-    }
+    // Optimistic update
+    setItems((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
+    );
 
     // Persist to server
     try {
@@ -174,8 +123,6 @@ function Column({ id, label, tasks, isOver }: { id: TaskStatus; label: string; t
     DONE: { bg: "bg-[#e6f9f2]", badge: "bg-[#00c875]", badgeText: "text-white" },
   };
 
-  const taskIds = tasks.map((task) => task.id);
-
   return (
     <div
       ref={setNodeRef}
@@ -199,61 +146,25 @@ function Column({ id, label, tasks, isOver }: { id: TaskStatus; label: string; t
         </div>
       )}
       
-      <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
-        <div className="space-y-3">
-          {tasks.map((task) => (
-            <SortableTaskCard key={task.id} task={task} />
-          ))}
-          {tasks.length === 0 && !isOver && (
-            <div className="text-center py-12 text-[#676879] text-sm">
-              גרור משימות לכאן
-            </div>
-          )}
-        </div>
-      </SortableContext>
-    </div>
-  );
-}
-
-function SortableTaskCard({ task }: { task: Task }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0 : 1,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      className="bg-gradient-to-br from-white to-[#fafbfc] rounded-xl border border-[#e6e9ef] p-4 cursor-grab active:cursor-grabbing hover:shadow-md hover:border-[#6961e0] transition-shadow touch-none"
-    >
-      <h4 className="font-medium text-[#323338] mb-2 text-sm">{task.title}</h4>
-      {task.description && (
-        <p className="text-xs text-[#676879] mb-3 line-clamp-2">{task.description}</p>
-      )}
-      {task.dueDate && (
-        <div className="flex items-center gap-1.5 text-xs text-[#676879] mt-3 pt-3 border-t border-[#e6e9ef]">
-          <Calendar className="w-3.5 h-3.5" />
-          {new Date(task.dueDate).toLocaleDateString("he-IL")}
-        </div>
-      )}
+      <div className="space-y-3">
+        {tasks.map((task) => (
+          <TaskCard key={task.id} task={task} />
+        ))}
+        {tasks.length === 0 && !isOver && (
+          <div className="text-center py-12 text-[#676879] text-sm">
+            גרור משימות לכאן
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 function TaskCard({ task, isDragOverlay }: { task: Task; isDragOverlay?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: task.id,
+  });
+
   // For overlay, use a slightly different style with fixed width
   if (isDragOverlay) {
     return (
@@ -272,5 +183,34 @@ function TaskCard({ task, isDragOverlay }: { task: Task; isDragOverlay?: boolean
     );
   }
 
-  return null;
+  // Hide the original card completely when dragging
+  if (isDragging) {
+    return (
+      <div
+        ref={setNodeRef}
+        className="opacity-0"
+      >
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className="bg-gradient-to-br from-white to-[#fafbfc] rounded-xl border border-[#e6e9ef] p-4 cursor-grab active:cursor-grabbing hover:shadow-md hover:border-[#6961e0] transition-shadow touch-none"
+    >
+      <h4 className="font-medium text-[#323338] mb-2 text-sm">{task.title}</h4>
+      {task.description && (
+        <p className="text-xs text-[#676879] mb-3 line-clamp-2">{task.description}</p>
+      )}
+      {task.dueDate && (
+        <div className="flex items-center gap-1.5 text-xs text-[#676879] mt-3 pt-3 border-t border-[#e6e9ef]">
+          <Calendar className="w-3.5 h-3.5" />
+          {new Date(task.dueDate).toLocaleDateString("he-IL")}
+        </div>
+      )}
+    </div>
+  );
 }

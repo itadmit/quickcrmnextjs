@@ -3,33 +3,167 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 262.1 83.3% 57.8%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 262.1 83.3% 57.8%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
-@layer components {
-  .prodify-button-primary {
-    @apply bg-[#00c875] hover:bg-[#00b869] text-white px-4 py-2 rounded-lg font-medium transition-colors;
-  }
-  
-  .prodify-button-secondary {
-    @apply bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg font-medium transition-colors;
-  }
+/* RTL Support */
+[dir="rtl"] {
+  direction: rtl;
 }
 
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Noto Sans Hebrew Font - loaded via next/font */
+body {
+  font-family: var(--font-noto-sans-hebrew), sans-serif;
 }
 
-.animate-fade-in {
-  animation: fade-in 0.3s ease-out;
+/* Pacifico Font for Logo */
+.font-pacifico {
+  font-family: var(--font-pacifico), cursive;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-secondary;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/30 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/50;
+}
+
+/* Prodify-like styling */
+.prodify-gradient {
+  background: linear-gradient(135deg, #6f65e2 0%, #b965e2 100%);
+}
+
+.prodify-gradient-text {
+  background: linear-gradient(135deg, #6f65e2 0%, #b965e2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.prodify-gradient-horizontal {
+  background: linear-gradient(to left, #93f0e1 0%, #6374c5 100%);
+}
+
+.sidebar-gradient {
+  background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+/* Card hover effects */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Status badges */
+.status-badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.status-new {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.status-in-progress {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.status-done {
+  @apply bg-green-100 text-green-800;
+}
+
+.status-high {
+  @apply bg-red-100 text-red-800;
+}
+
+.status-normal {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.status-low {
+  @apply bg-gray-100 text-gray-800;
+}
+
+/* Priority colors */
+.priority-urgent {
+  @apply bg-red-500 text-white;
+}
+
+.priority-high {
+  @apply bg-orange-500 text-white;
+}
+
+.priority-normal {
+  @apply bg-blue-500 text-white;
+}
+
+.priority-low {
+  @apply bg-gray-500 text-white;
+}
+
+/* Project colors */
+.project-purple {
+  @apply bg-purple-500;
+}
+
+.project-blue {
+  @apply bg-blue-500;
+}
+
+.project-cyan {
+  @apply bg-cyan-500;
+}
+
+.project-pink {
+  @apply bg-pink-500;
+}
+
+.project-orange {
+  @apply bg-orange-500;
 }
 

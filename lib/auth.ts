@@ -1,33 +1,37 @@
-import { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import { prisma } from "./prisma";
-import bcrypt from "bcryptjs";
+import { NextAuthOptions } from "next-auth"
+import CredentialsProvider from "next-auth/providers/credentials"
+import bcrypt from "bcryptjs"
+import { prisma } from "./prisma"
 
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
+        email: { label: "אימייל", type: "email" },
+        password: { label: "סיסמה", type: "password" }
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          return null;
+          throw new Error("נא למלא אימייל וסיסמה")
         }
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
-        });
+          include: { company: true }
+        })
 
         if (!user) {
-          return null;
+          throw new Error("משתמש לא נמצא")
         }
 
-        const isValid = await bcrypt.compare(credentials.password, user.password);
+        const isPasswordValid = await bcrypt.compare(
+          credentials.password,
+          user.password
+        )
 
-        if (!isValid) {
-          return null;
+        if (!isPasswordValid) {
+          throw new Error("סיסמה שגויה")
         }
 
         return {
@@ -36,33 +40,40 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           role: user.role,
           companyId: user.companyId,
-        };
-      },
-    }),
+          companyName: user.company.name,
+        }
+      }
+    })
   ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id
+        token.name = user.name
+        token.role = user.role
+        token.companyId = user.companyId
+        token.companyName = user.companyName
+      }
+      return token
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.id as string
+        session.user.name = token.name as string
+        session.user.role = token.role as string
+        session.user.companyId = token.companyId as string
+        session.user.companyName = token.companyName as string
+      }
+      return session
+    }
+  },
   pages: {
     signIn: "/login",
   },
   session: {
     strategy: "jwt",
   },
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.companyId = (user as any).companyId;
-        token.role = (user as any).role;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).companyId = token.companyId;
-        (session.user as any).role = token.role;
-      }
-      return session;
-    },
-  },
-};
+  secret: process.env.NEXTAUTH_SECRET,
+}
+
 

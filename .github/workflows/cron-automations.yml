@@ -1,0 +1,36 @@
+name: Run Automations Cron
+
+on:
+  # רץ כל שעה
+  schedule:
+    - cron: '0 * * * *'
+  
+  # אפשר להריץ ידנית מה-GitHub UI
+  workflow_dispatch:
+
+jobs:
+  run-automations:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Run Automation Checks
+        run: |
+          echo "🤖 Running automation checks..."
+          
+          # קורא לאנדפוינט שלך
+          response=$(curl -s -w "\n%{http_code}" -X GET ${{ secrets.APP_URL }}/api/cron/automations \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n-1)
+          
+          echo "Response Code: $http_code"
+          echo "Response Body: $body"
+          
+          if [ "$http_code" -eq 200 ]; then
+            echo "✅ Automation check completed successfully!"
+          else
+            echo "❌ Automation check failed with code $http_code"
+            exit 1
+          fi
+

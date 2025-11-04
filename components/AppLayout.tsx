@@ -1,19 +1,32 @@
-"use client";
+"use client"
 
-import Header from "./Header";
+import { Sidebar } from "./Sidebar"
+import { Header } from "./Header"
+import { Footer } from "./Footer"
 
-export default function AppLayout({
-  children,
-  user,
-}: {
-  children: React.ReactNode;
-  user: any;
-}) {
+interface AppLayoutProps {
+  children: React.ReactNode
+  title?: string
+}
+
+export function AppLayout({ children, title }: AppLayoutProps) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header user={user} />
-      <main className="container mx-auto px-4 py-8">{children}</main>
+    <div className="flex h-screen" style={{ backgroundColor: '#f7f9fe' }} dir="rtl">
+      <Sidebar />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Header title={title} />
+        <main className="flex-1 overflow-y-auto">
+          <div className="min-h-full flex flex-col">
+            <div className="flex-1 p-6">
+              <div className="max-w-7xl mx-auto">
+                {children}
+              </div>
+            </div>
+            <Footer />
+          </div>
+        </main>
+      </div>
     </div>
-  );
+  )
 }
 

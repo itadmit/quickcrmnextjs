@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,13 +10,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Plan {
-  FREE
-  PRO
-  ULTRA
-}
-
-enum Role {
+enum UserRole {
   SUPER_ADMIN
   ADMIN
   MANAGER
@@ -22,22 +19,39 @@ enum Role {
 
 enum LeadStatus {
   NEW
-  IN_PROGRESS
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
   WON
   LOST
 }
 
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
 enum ProjectStatus {
   PLANNING
-  ACTIVE
+  IN_PROGRESS
   ON_HOLD
-  DONE
+  COMPLETED
+  CANCELLED
 }
 
 enum TaskStatus {
   TODO
   IN_PROGRESS
   DONE
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
 }
 
 enum BudgetStatus {
@@ -48,117 +62,416 @@ enum BudgetStatus {
 }
 
 model Company {
-  id        String   @id @default(uuid())
-  name      String
-  plan      Plan     @default(FREE)
-  logoUrl   String?
-  createdAt DateTime @default(now())
-  users     User[]
-  leads     Lead[]
-  clients   Client[]
-  projects  Project[]
-  tasks     Task[]
-  budgets   Budget[]
-  webhooks  WebhookLog[]
+  id          String   @id @default(cuid())
+  name        String
+  plan        String   @default("free")
+  apiKey      String   @unique @default(cuid())
+  hmacSecret  String?
+  settings    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users          User[]
+  leads          Lead[]
+  clients        Client[]
+  projects       Project[]
+  tasks          Task[]
+  budgets        Budget[]
+  files          File[]
+  webhookLogs    WebhookLog[]
+  automations    Automation[]
+  auditLogs      AuditLog[]
+  pipelines      Pipeline[]
+  emailTemplates EmailTemplate[]
+  notifications  Notification[]
+  integrations   Integration[]
+  events         Event[]
+
+  @@map("companies")
 }
 
 model User {
-  id        String   @id @default(uuid())
+  id        String   @id @default(cuid())
   email     String   @unique
   name      String
   password  String
-  role      Role     @default(USER)
+  role      UserRole @default(USER)
   companyId String
-  company   Company  @relation(fields: [companyId], references: [id])
-  tasks     Task[]
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  avatar    String?
+  settings  Json?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownedLeads        Lead[]         @relation("LeadOwner")
+  ownedClients      Client[]       @relation("ClientOwner")
+  assignedTasks     Task[]         @relation("TaskAssignee")
+  createdAutomations Automation[]  @relation("AutomationCreator")
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+
+  @@index([companyId])
+  @@index([email])
+  @@map("users")
 }
 
 model Lead {
-  id        String      @id @default(uuid())
-  companyId String
-  company   Company     @relation(fields: [companyId], references: [id])
-  name      String
-  email     String?
-  phone     String?
-  source    String?
-  status    LeadStatus  @default(NEW)
-  tags      String[]
-  notes     String?
-  clientId  String?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id          String     @id @default(cuid())
+  companyId   String
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  email       String?
+  phone       String?
+  source      String?
+  status      LeadStatus @default(NEW)
+  stageId     String?
+  stage       PipelineStage? @relation(fields: [stageId], references: [id])
+  tags        String[]   @default([])
+  ownerId     String?
+  owner       User?      @relation("LeadOwner", fields: [ownerId], references: [id])
+  clientId    String?
+  client      Client?    @relation(fields: [clientId], references: [id])
+  notes       String?
+  customFields Json?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  files       File[]
+  tasks       Task[]
+  budgets     Budget[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([ownerId])
+  @@index([email])
+  @@index([clientId])
+  @@map("leads")
 }
 
 model Client {
-  id        String    @id @default(uuid())
-  companyId String
-  company   Company   @relation(fields: [companyId], references: [id])
-  name      String
-  email     String?
-  phone     String?
-  address   String?
-  notes     String?
-  createdAt DateTime  @default(now())
-  projects  Project[]
-  budgets   Budget[]
+  id          String       @id @default(cuid())
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  status      ClientStatus @default(ACTIVE)
+  ownerId     String?
+  owner       User?        @relation("ClientOwner", fields: [ownerId], references: [id])
+  notes       String?
+  customFields Json?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  leads       Lead[]
+  projects    Project[]
+  budgets     Budget[]
+  files       File[]
+  tasks       Task[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([ownerId])
+  @@map("clients")
 }
 
 model Project {
-  id          String         @id @default(uuid())
+  id          String        @id @default(cuid())
   companyId   String
-  company     Company        @relation(fields: [companyId], references: [id])
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   clientId    String
-  client      Client         @relation(fields: [clientId], references: [id])
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   name        String
   description String?
-  status      ProjectStatus  @default(PLANNING)
+  status      ProjectStatus @default(PLANNING)
   budget      Float?
-  progress    Int            @default(0)
+  progress    Int           @default(0)
   startDate   DateTime?
   endDate     DateTime?
-  createdAt   DateTime       @default(now())
+  customFields Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
   tasks       Task[]
   budgets     Budget[]
+  files       File[]
+
+  @@index([companyId])
+  @@index([clientId])
+  @@index([status])
+  @@map("projects")
 }
 
 model Task {
-  id         String     @id @default(uuid())
-  companyId  String
-  company    Company    @relation(fields: [companyId], references: [id])
-  projectId  String?
-  project    Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  assigneeId String?
-  assignee   User?      @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
-  title      String
+  id          String     @id @default(cuid())
+  companyId   String
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clientId    String?
+  client      Client?    @relation(fields: [clientId], references: [id])
+  leadId      String?
+  lead        Lead?      @relation(fields: [leadId], references: [id])
+  assigneeId  String?
+  assignee    User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  title       String
   description String?
-  status     TaskStatus @default(TODO)
-  position   Int        @default(0)
-  dueDate    DateTime?
-  createdAt  DateTime   @default(now())
+  status      TaskStatus @default(TODO)
+  position    Int        @default(0)
+  dueDate     DateTime?
+  priority    Priority   @default(NORMAL)
+  tags        String[]   @default([])
+  checklist   Json?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  files       File[]
+
+  @@index([companyId])
+  @@index([projectId])
+  @@index([assigneeId])
+  @@index([status])
+  @@map("tasks")
 }
 
 model Budget {
-  id        String        @id @default(uuid())
-  companyId String
-  company   Company       @relation(fields: [companyId], references: [id])
-  projectId String?
-  project   Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  clientId  String?
-  client    Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  amount    Float
-  expectedAt DateTime?
-  status    BudgetStatus  @default(PENDING)
-  createdAt DateTime      @default(now())
+  id          String       @id @default(cuid())
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?     @relation(fields: [projectId], references: [id])
+  clientId    String?
+  client      Client?      @relation(fields: [clientId], references: [id])
+  leadId      String?
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  name        String
+  amount      Float
+  expectedAt  DateTime?
+  status      BudgetStatus @default(PENDING)
+  notes       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([companyId])
+  @@index([status])
+  @@index([expectedAt])
+  @@map("budgets")
+}
+
+model File {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entityType  String
+  entityId    String
+  path        String
+  name        String
+  size        Int
+  mimeType    String?
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId      String?
+  client      Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId    String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String?
+  task        Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId      String?
+
+  @@index([companyId])
+  @@index([entityType, entityId])
+  @@map("files")
 }
 
 model WebhookLog {
-  id        String   @id @default(uuid())
-  companyId String
-  company   Company  @relation(fields: [companyId], references: [id])
-  type      String
-  payload   Json
-  statusCode Int
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type        String
+  payload     Json
+  statusCode  Int
+  response    Json?
+  durationMs  Int?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([createdAt])
+  @@map("webhook_logs")
 }
+
+model Automation {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  trigger     Json
+  conditions  Json?
+  actions     Json
+  createdBy   String
+  creator     User     @relation("AutomationCreator", fields: [createdBy], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  logs        AutomationLog[]
+
+  @@index([companyId])
+  @@index([isActive])
+  @@map("automations")
+}
+
+model AutomationLog {
+  id            String     @id @default(cuid())
+  automationId  String
+  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  status        String
+  payload       Json?
+  result        Json?
+  error         String?
+  createdAt     DateTime   @default(now())
+
+  @@index([automationId])
+  @@index([createdAt])
+  @@map("automation_logs")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String
+  entityType  String
+  entityId    String?
+  diff        Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Pipeline {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stages      PipelineStage[]
+
+  @@index([companyId])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id              String   @id @default(cuid())
+  pipelineId      String
+  pipeline        Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name            String
+  position        Int
+  winProbability  Float    @default(0)
+  color           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  leads           Lead[]
+
+  @@index([pipelineId])
+  @@map("pipeline_stages")
+}
+
+model EmailTemplate {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  subject     String
+  body        String
+  variables   String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("email_templates")
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String
+  title       String
+  message     String
+  entityType  String?
+  entityId    String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+enum IntegrationType {
+  INVOICE4U
+  STRIPE
+  ZAPIER
+  WHATSAPP
+  GOOGLE_CALENDAR
+}
+
+model Integration {
+  id          String          @id @default(cuid())
+  companyId   String
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type        IntegrationType
+  name        String
+  apiKey      String?
+  apiSecret   String?
+  config      Json?
+  isActive    Boolean         @default(true)
+  lastSyncAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([companyId, type])
+  @@index([companyId])
+  @@map("integrations")
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  attendees   String[] @default([])
+  isAllDay    Boolean  @default(false)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([startTime])
+  @@map("events")
+}
+
 

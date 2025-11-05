@@ -22,7 +22,102 @@ export async function GET(req: NextRequest) {
       take: 50, // Limit to 50 most recent notifications
     })
 
-    return NextResponse.json(notifications)
+    // הוספת פרטים נוספים על ה-entities
+    const enrichedNotifications = await Promise.all(
+      notifications.map(async (notification) => {
+        const enriched: any = {
+          ...notification,
+          entityDetails: null,
+        }
+
+        // אם יש entityType ו-entityId, נטען פרטים נוספים
+        if (notification.entityType && notification.entityId) {
+          try {
+            switch (notification.entityType) {
+              case 'lead':
+                const lead = await prisma.lead.findUnique({
+                  where: { id: notification.entityId },
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true,
+                    source: true,
+                    status: true,
+                  },
+                })
+                if (lead) {
+                  enriched.entityDetails = lead
+                }
+                break
+              case 'quote':
+                const quote = await prisma.quote.findUnique({
+                  where: { id: notification.entityId },
+                  select: {
+                    id: true,
+                    quoteNumber: true,
+                    title: true,
+                    total: true,
+                    status: true,
+                  },
+                })
+                if (quote) {
+                  enriched.entityDetails = quote
+                }
+                break
+              case 'payment':
+                const payment = await prisma.payment.findUnique({
+                  where: { id: notification.entityId },
+                  select: {
+                    id: true,
+                    amount: true,
+                    status: true,
+                    transactionId: true,
+                  },
+                })
+                if (payment) {
+                  enriched.entityDetails = payment
+                }
+                break
+              case 'client':
+                const client = await prisma.client.findUnique({
+                  where: { id: notification.entityId },
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true,
+                  },
+                })
+                if (client) {
+                  enriched.entityDetails = client
+                }
+                break
+              case 'project':
+                const project = await prisma.project.findUnique({
+                where: { id: notification.entityId },
+                select: {
+                  id: true,
+                  name: true,
+                  status: true,
+                  budget: true,
+                },
+              })
+              if (project) {
+                enriched.entityDetails = project
+              }
+              break
+            }
+          } catch (error) {
+            console.error(`Error fetching entity details for ${notification.entityType}:`, error)
+          }
+        }
+
+        return enriched
+      })
+    )
+
+    return NextResponse.json(enrichedNotifications)
   } catch (error) {
     console.error("Error fetching notifications:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -73,6 +168,29 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error updating notification:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.companyId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Delete all notifications for current user
+    await prisma.notification.deleteMany({
+      where: {
+        userId: session.user.id,
+        companyId: session.user.companyId,
+      },
+    })
+    
+    return NextResponse.json({ success: true, message: "All notifications deleted" })
+  } catch (error) {
+    console.error("Error deleting notifications:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

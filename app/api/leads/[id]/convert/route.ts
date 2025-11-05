@@ -26,6 +26,21 @@ export async function POST(
       return NextResponse.json({ error: "Lead not found" }, { status: 404 })
     }
 
+    // Check if lead already has a client (already converted)
+    if (lead.clientId) {
+      const existingClient = await prisma.client.findUnique({
+        where: { id: lead.clientId },
+      })
+      if (existingClient) {
+        return NextResponse.json({ 
+          success: true, 
+          client: existingClient,
+          message: "Lead already converted to client",
+          alreadyConverted: true
+        })
+      }
+    }
+
     // Create a new client from the lead
     const client = await prisma.client.create({
       data: {
@@ -49,6 +64,32 @@ export async function POST(
         clientId: client.id,
       },
     })
+
+    // Transfer tasks from lead to client
+    await prisma.task.updateMany({
+      where: {
+        leadId: params.id,
+        clientId: null, // Only update tasks that don't already have a client
+      },
+      data: {
+        clientId: client.id,
+      },
+    })
+
+    // Transfer files from lead to client
+    await prisma.file.updateMany({
+      where: {
+        leadId: params.id,
+        clientId: null, // Only update files that don't already have a client
+      },
+      data: {
+        clientId: client.id,
+      },
+    })
+
+    // Note: Quotes and Payments are already linked to the lead via leadId
+    // and will be accessible through the lead relationship
+    // Projects created from quotes will be linked to the client
 
     // Log the conversion
     await prisma.auditLog.create({

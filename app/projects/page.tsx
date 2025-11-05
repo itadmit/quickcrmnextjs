@@ -6,7 +6,7 @@ import { AppLayout } from "@/components/AppLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Search, Filter, FolderKanban } from "lucide-react"
+import { Plus, Search, Filter, FolderKanban, Trash2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton"
 import { NewProjectDialog } from "@/components/dialogs/NewProjectDialog"
@@ -19,7 +19,8 @@ interface Project {
   startDate: string | null
   endDate: string | null
   budget: number | null
-  client: { name: string } | null
+  paidAmount?: number
+  client: { id: string; name: string } | null
   tasks: Array<{ id: string; title: string; status: string }>
   _count: { tasks: number }
   createdAt: string
@@ -86,6 +87,43 @@ export default function ProjectsPage() {
     if (project.tasks.length === 0) return 0
     const completedTasks = project.tasks.filter(t => t.status === 'DONE').length
     return Math.round((completedTasks / project.tasks.length) * 100)
+  }
+
+  const handleDeleteProject = async (projectId: string, projectName: string, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent card click
+    
+    if (!confirm(`האם אתה בטוח שברצונך למחוק את הפרויקט "${projectName}"? פעולה זו תמחק גם את כל המשימות, התשלומים, התקציבים והקבצים הקשורים לפרויקט.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        toast({
+          title: "פרויקט נמחק",
+          description: `הפרויקט ${projectName} נמחק בהצלחה${data.deletedData ? ` (${data.deletedData.tasks} משימות, ${data.deletedData.payments} תשלומים, ${data.deletedData.files} קבצים)` : ''}`,
+        })
+        fetchProjects()
+      } else {
+        const errorData = await response.json()
+        toast({
+          title: "שגיאה",
+          description: errorData.error || "לא ניתן למחוק את הפרויקט",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error)
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה במחיקת הפרויקט",
+        variant: "destructive",
+      })
+    }
   }
 
   const activeProjects = projects.filter(p => p.status === 'IN_PROGRESS').length
@@ -191,7 +229,7 @@ export default function ProjectsPage() {
                 <Card 
                   key={project.id} 
                   className="shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => router.push(`/clients/${project.client}`)}
+                  onClick={() => project.client && router.push(`/clients/${project.client.id}`)}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -201,9 +239,20 @@ export default function ProjectsPage() {
                           {project.client?.name || "ללא לקוח"}
                         </p>
                       </div>
-                      <span className={`text-xs px-2 py-1 rounded-full ${statusColors[project.status]}`}>
-                        {statusLabels[project.status]}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-1 rounded-full ${statusColors[project.status]}`}>
+                          {statusLabels[project.status]}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={(e) => handleDeleteProject(project.id, project.name, e)}
+                          title="מחק פרויקט"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -235,7 +284,19 @@ export default function ProjectsPage() {
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-gray-600">תקציב</span>
                           <span className="font-medium">
-                            ₪{(project.budget / 1000).toFixed(0)}K
+                            ₪{project.budget.toLocaleString("he-IL")}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Paid Amount */}
+                      {project.paidAmount !== undefined && project.paidAmount > 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">שולם עד כה</span>
+                          <span className="font-medium text-green-600">
+                            ₪{project.paidAmount.toLocaleString("he-IL", {
+                              minimumFractionDigits: 2,
+                            })}
                           </span>
                         </div>
                       )}

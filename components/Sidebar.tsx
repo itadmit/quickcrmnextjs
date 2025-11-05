@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -18,13 +19,15 @@ import {
   TrendingUp,
   Plug,
   Workflow,
+  FileText,
+  CreditCard,
 } from "lucide-react"
 
 const menuItems = [
   { icon: Home, label: "בית", href: "/dashboard" },
   { icon: CheckSquare, label: "המשימות שלי", href: "/tasks/my" },
   { icon: Calendar, label: "לוח שנה", href: "/calendar" },
-  { icon: Inbox, label: "התראות", href: "/notifications", badge: 3 },
+  { icon: Inbox, label: "התראות", href: "/notifications", hasBadge: true },
   { icon: TrendingUp, label: "דוחות ואנליטיקה", href: "/reports" },
 ]
 
@@ -32,6 +35,8 @@ const projectItems = [
   { label: "לידים", href: "/leads", color: "bg-purple-500" },
   { label: "לקוחות", href: "/clients", color: "bg-blue-500" },
   { label: "פרויקטים", href: "/projects", color: "bg-cyan-500" },
+  { label: "הצעות מחיר", href: "/quotes", color: "bg-green-500" },
+  { label: "תשלומים", href: "/payments", color: "bg-orange-500" },
 ]
 
 const settingsItems = [
@@ -42,6 +47,27 @@ const settingsItems = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const response = await fetch('/api/notifications')
+        if (response.ok) {
+          const notifications = await response.json()
+          const unread = notifications.filter((n: any) => !n.isRead).length
+          setUnreadCount(unread)
+        }
+      } catch (error) {
+        console.error('Error fetching notifications count:', error)
+      }
+    }
+
+    fetchUnreadCount()
+    // רענון כל 30 שניות
+    const interval = setInterval(fetchUnreadCount, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <div className="w-64 h-screen bg-gradient-to-b from-gray-50 to-gray-100 border-l border-gray-200 flex flex-col">
@@ -78,9 +104,9 @@ export function Sidebar() {
               >
                 <Icon className="w-5 h-5" />
                 <span className="flex-1">{item.label}</span>
-                {item.badge && (
-                  <span className="prodify-gradient text-white text-xs rounded-full px-2 py-0.5">
-                    {item.badge}
+                {item.hasBadge && unreadCount > 0 && (
+                  <span className="prodify-gradient text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] text-center">
+                    {unreadCount}
                   </span>
                 )}
               </Link>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useSession, signOut } from "next-auth/react"
 import { Bell, Search, ChevronDown, Settings, LogOut, User } from "lucide-react"
 import {
@@ -13,6 +14,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { NotificationsDrawer } from "@/components/NotificationsDrawer"
 
 interface HeaderProps {
   title?: string
@@ -20,6 +22,27 @@ interface HeaderProps {
 
 export function Header({ title }: HeaderProps) {
   const { data: session } = useSession()
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const response = await fetch('/api/notifications')
+        if (response.ok) {
+          const notifications = await response.json()
+          const unread = notifications.filter((n: any) => !n.isRead).length
+          setUnreadCount(unread)
+        }
+      } catch (error) {
+        console.error('Error fetching notifications count:', error)
+      }
+    }
+
+    fetchUnreadCount()
+    const interval = setInterval(fetchUnreadCount, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   const getUserInitials = (name: string) => {
     return name
@@ -50,10 +73,21 @@ export function Header({ title }: HeaderProps) {
         </div>
 
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="relative"
+          onClick={() => setNotificationsOpen(true)}
+        >
           <Bell className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          {unreadCount > 0 && (
+            <span className="absolute top-1 right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
         </Button>
+        
+        <NotificationsDrawer open={notificationsOpen} onOpenChange={setNotificationsOpen} />
 
         {/* User Menu */}
         <DropdownMenu>

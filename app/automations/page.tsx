@@ -320,23 +320,24 @@ export default function AutomationsPage() {
                             <MoreVertical className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" dir="rtl">
                           <DropdownMenuItem 
                             onClick={() => runAutomation(automation.id, automation.name)}
                             disabled={!automation.isActive}
+                            className="flex-row-reverse"
                           >
-                            <Zap className="w-4 h-4 ml-2" />
+                            <Zap className="w-4 h-4 ml-2 flex-shrink-0" />
                             הרץ עכשיו
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => toggleAutomation(automation.id, automation.isActive)}>
+                          <DropdownMenuItem onClick={() => toggleAutomation(automation.id, automation.isActive)} className="flex-row-reverse">
                             {automation.isActive ? (
                               <>
-                                <Pause className="w-4 h-4 ml-2" />
+                                <Pause className="w-4 h-4 ml-2 flex-shrink-0" />
                                 השהה
                               </>
                             ) : (
                               <>
-                                <Play className="w-4 h-4 ml-2" />
+                                <Play className="w-4 h-4 ml-2 flex-shrink-0" />
                                 הפעל
                               </>
                             )}
@@ -344,15 +345,15 @@ export default function AutomationsPage() {
                           <DropdownMenuItem onClick={() => {
                             setSelectedAutomation(automation)
                             setShowEditDialog(true)
-                          }}>
-                            <Edit className="w-4 h-4 ml-2" />
+                          }} className="flex-row-reverse">
+                            <Edit className="w-4 h-4 ml-2 flex-shrink-0" />
                             ערוך
                           </DropdownMenuItem>
                           <DropdownMenuItem 
                             onClick={() => deleteAutomation(automation.id)}
-                            className="text-red-600"
+                            className="text-red-600 flex-row-reverse"
                           >
-                            <Trash2 className="w-4 h-4 ml-2" />
+                            <Trash2 className="w-4 h-4 ml-2 flex-shrink-0" />
                             מחק
                           </DropdownMenuItem>
                         </DropdownMenuContent>

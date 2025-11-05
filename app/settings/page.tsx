@@ -22,6 +22,7 @@ import Link from "next/link"
 export default function SettingsPage() {
   const { toast } = useToast()
   const { data: session } = useSession()
+  const [activeTab, setActiveTab] = useState<"general" | "email" | "notifications" | "security" | "advanced">("general")
   const [isResetting, setIsResetting] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [isSeeding, setIsSeeding] = useState(false)
@@ -155,9 +156,36 @@ export default function SettingsPage() {
           <p className="text-gray-500 mt-1">נהל את הגדרות המערכת והחשבון שלך</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Profile Settings */}
-          <Card className="shadow-sm">
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <div className="flex gap-6">
+            {[
+              { key: "general", label: "כללי" },
+              { key: "email", label: "אימייל" },
+              { key: "notifications", label: "התראות" },
+              { key: "security", label: "אבטחה" },
+              ...(isAdmin ? [{ key: "advanced", label: "מתקדם" }] : []),
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as any)}
+                className={`pb-3 border-b-2 transition-colors ${
+                  activeTab === tab.key
+                    ? "border-purple-600 text-purple-600 font-medium"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* General Tab */}
+        {activeTab === "general" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Profile Settings */}
+            <Card className="shadow-sm">
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -193,6 +221,35 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          {/* Integrations */}
+          <Card className="shadow-sm">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                  <SettingsIcon className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <CardTitle>אינטגרציות</CardTitle>
+                  <CardDescription>חיבורים למערכות חיצוניות</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <Link href="/settings/integrations">
+                  <Button variant="outline" className="w-full">
+                    נהל אינטגרציות
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+          </div>
+        )}
+
+        {/* Email Tab */}
+        {activeTab === "email" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Email Configuration */}
           <Card className="shadow-sm">
             <CardHeader>
@@ -243,7 +300,12 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
+        )}
 
+        {/* Notifications Tab */}
+        {activeTab === "notifications" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Notifications */}
           <Card className="shadow-sm">
             <CardHeader>
@@ -274,31 +336,12 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
+        )}
 
-          {/* Integrations */}
-          <Card className="shadow-sm">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                  <SettingsIcon className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <CardTitle>אינטגרציות</CardTitle>
-                  <CardDescription>חיבורים למערכות חיצוניות</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <Link href="/settings/integrations">
-                  <Button variant="outline" className="w-full">
-                    נהל אינטגרציות
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-
+        {/* Security Tab */}
+        {activeTab === "security" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Security */}
           <Card className="shadow-sm">
             <CardHeader>
@@ -323,10 +366,13 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
+          </div>
+        )}
 
-        {/* Danger Zone - Only for Admins */}
-        {isAdmin && (
+        {/* Advanced Tab - Only for Admins */}
+        {activeTab === "advanced" && isAdmin && (
+          <div className="space-y-6">
+          {/* Danger Zone */}
           <Card className="shadow-sm border-red-200 bg-red-50">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -434,6 +480,7 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
         )}
       </div>
     </AppLayout>

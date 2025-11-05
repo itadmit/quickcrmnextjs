@@ -159,15 +159,17 @@ export function EditLeadDialog({ lead, open, onOpenChange, onLeadUpdated }: Edit
             <div>
               <Label htmlFor="source">מקור</Label>
               <Select
-                value={formData.source}
-                onValueChange={(value) => setFormData({ ...formData, source: value })}
+                value={formData.source || "NONE"}
+                onValueChange={(value) => setFormData({ ...formData, source: value === "NONE" ? "" : value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="בחר מקור" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="NONE">ללא מקור</SelectItem>
                   <SelectItem value="אתר">אתר</SelectItem>
                   <SelectItem value="Facebook">Facebook</SelectItem>
+                  <SelectItem value="Instagram">Instagram</SelectItem>
                   <SelectItem value="Google">Google</SelectItem>
                   <SelectItem value="המלצה">המלצה</SelectItem>
                   <SelectItem value="טלפון">טלפון</SelectItem>

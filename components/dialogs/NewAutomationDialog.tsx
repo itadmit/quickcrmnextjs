@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Zap, UserPlus, CheckSquare, Calendar, Users, Mail, Bell, FileText, Tag, ArrowLeft } from "lucide-react"
+import { Zap, UserPlus, CheckSquare, Calendar, Users, Mail, Bell, FileText, Tag, ArrowLeft, FileCheck, CreditCard, FolderPlus } from "lucide-react"
 
 interface NewAutomationDialogProps {
   open: boolean
@@ -29,6 +29,9 @@ const triggers = [
   { value: 'task_completed', label: 'משימה הושלמה', icon: CheckSquare, color: 'text-cyan-600', bg: 'bg-cyan-100' },
   { value: 'meeting_scheduled', label: 'פגישה נקבעה', icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-100' },
   { value: 'client_created', label: 'לקוח חדש נוצר', icon: Users, color: 'text-pink-600', bg: 'bg-pink-100' },
+  { value: 'quote_accepted', label: 'הצעה אושרה', icon: FileCheck, color: 'text-green-600', bg: 'bg-green-100' },
+  { value: 'payment_received', label: 'תשלום התקבל', icon: CreditCard, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+  { value: 'project_created', label: 'פרויקט חדש נוצר', icon: FolderPlus, color: 'text-indigo-600', bg: 'bg-indigo-100' },
 ]
 
 const actions = [

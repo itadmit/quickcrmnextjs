@@ -62,14 +62,14 @@ enum BudgetStatus {
 }
 
 model Company {
-  id          String   @id @default(cuid())
-  name        String
-  plan        String   @default("free")
-  apiKey      String   @unique @default(cuid())
-  hmacSecret  String?
-  settings    Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  name       String
+  plan       String   @default("free")
+  apiKey     String   @unique @default(cuid())
+  hmacSecret String?
+  settings   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   users          User[]
   leads          Lead[]
@@ -86,6 +86,8 @@ model Company {
   notifications  Notification[]
   integrations   Integration[]
   events         Event[]
+  quotes         Quote[]
+  payments       Payment[]
 
   @@map("companies")
 }
@@ -103,12 +105,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  ownedLeads        Lead[]         @relation("LeadOwner")
-  ownedClients      Client[]       @relation("ClientOwner")
-  assignedTasks     Task[]         @relation("TaskAssignee")
-  createdAutomations Automation[]  @relation("AutomationCreator")
-  auditLogs         AuditLog[]
-  notifications     Notification[]
+  ownedLeads         Lead[]         @relation("LeadOwner")
+  ownedClients       Client[]       @relation("ClientOwner")
+  assignedTasks      Task[]         @relation("TaskAssignee")
+  createdAutomations Automation[]   @relation("AutomationCreator")
+  auditLogs          AuditLog[]
+  notifications      Notification[]
 
   @@index([companyId])
   @@index([email])
@@ -116,29 +118,30 @@ model User {
 }
 
 model Lead {
-  id          String     @id @default(cuid())
-  companyId   String
-  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name        String
-  email       String?
-  phone       String?
-  source      String?
-  status      LeadStatus @default(NEW)
-  stageId     String?
-  stage       PipelineStage? @relation(fields: [stageId], references: [id])
-  tags        String[]   @default([])
-  ownerId     String?
-  owner       User?      @relation("LeadOwner", fields: [ownerId], references: [id])
-  clientId    String?
-  client      Client?    @relation(fields: [clientId], references: [id])
-  notes       String?
+  id           String         @id @default(cuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name         String
+  email        String?
+  phone        String?
+  source       String?
+  status       LeadStatus     @default(NEW)
+  stageId      String?
+  stage        PipelineStage? @relation(fields: [stageId], references: [id])
+  tags         String[]       @default([])
+  ownerId      String?
+  owner        User?          @relation("LeadOwner", fields: [ownerId], references: [id])
+  clientId     String?
+  client       Client?        @relation(fields: [clientId], references: [id])
+  notes        String?
   customFields Json?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  files       File[]
-  tasks       Task[]
-  budgets     Budget[]
+  files   File[]
+  tasks   Task[]
+  budgets Budget[]
+  quotes  Quote[]
 
   @@index([companyId])
   @@index([status])
@@ -149,26 +152,27 @@ model Lead {
 }
 
 model Client {
-  id          String       @id @default(cuid())
-  companyId   String
-  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name        String
-  email       String?
-  phone       String?
-  address     String?
-  status      ClientStatus @default(ACTIVE)
-  ownerId     String?
-  owner       User?        @relation("ClientOwner", fields: [ownerId], references: [id])
-  notes       String?
+  id           String       @id @default(cuid())
+  companyId    String
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name         String
+  email        String?
+  phone        String?
+  address      String?
+  status       ClientStatus @default(ACTIVE)
+  ownerId      String?
+  owner        User?        @relation("ClientOwner", fields: [ownerId], references: [id])
+  signature    String? // Base64 signature image - החתימה של הלקוח
+  notes        String?
   customFields Json?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  leads       Lead[]
-  projects    Project[]
-  budgets     Budget[]
-  files       File[]
-  tasks       Task[]
+  leads    Lead[]
+  projects Project[]
+  budgets  Budget[]
+  files    File[]
+  tasks    Task[]
 
   @@index([companyId])
   @@index([status])
@@ -177,25 +181,26 @@ model Client {
 }
 
 model Project {
-  id          String        @id @default(cuid())
-  companyId   String
-  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  clientId    String
-  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  status      ProjectStatus @default(PLANNING)
-  budget      Float?
-  progress    Int           @default(0)
-  startDate   DateTime?
-  endDate     DateTime?
+  id           String        @id @default(cuid())
+  companyId    String
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clientId     String
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  status       ProjectStatus @default(PLANNING)
+  budget       Float?
+  progress     Int           @default(0)
+  startDate    DateTime?
+  endDate      DateTime?
   customFields Json?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
-  tasks       Task[]
-  budgets     Budget[]
-  files       File[]
+  tasks    Task[]
+  budgets  Budget[]
+  files    File[]
+  payments Payment[]
 
   @@index([companyId])
   @@index([clientId])
@@ -226,7 +231,7 @@ model Task {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  files       File[]
+  files File[]
 
   @@index([companyId])
   @@index([projectId])
@@ -236,22 +241,22 @@ model Task {
 }
 
 model Budget {
-  id          String       @id @default(cuid())
-  companyId   String
-  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  projectId   String?
-  project     Project?     @relation(fields: [projectId], references: [id])
-  clientId    String?
-  client      Client?      @relation(fields: [clientId], references: [id])
-  leadId      String?
-  lead        Lead?        @relation(fields: [leadId], references: [id])
-  name        String
-  amount      Float
-  expectedAt  DateTime?
-  status      BudgetStatus @default(PENDING)
-  notes       String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id         String       @id @default(cuid())
+  companyId  String
+  company    Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId  String?
+  project    Project?     @relation(fields: [projectId], references: [id])
+  clientId   String?
+  client     Client?      @relation(fields: [clientId], references: [id])
+  leadId     String?
+  lead       Lead?        @relation(fields: [leadId], references: [id])
+  name       String
+  amount     Float
+  expectedAt DateTime?
+  status     BudgetStatus @default(PENDING)
+  notes      String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
   @@index([companyId])
   @@index([status])
@@ -260,26 +265,26 @@ model Budget {
 }
 
 model File {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  entityType  String
-  entityId    String
-  path        String
-  name        String
-  size        Int
-  mimeType    String?
-  uploadedBy  String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entityType String
+  entityId   String
+  path       String
+  name       String
+  size       Int
+  mimeType   String?
+  uploadedBy String?
+  createdAt  DateTime @default(now())
 
-  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  leadId      String?
-  client      Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientId    String?
-  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   String?
-  task        Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  taskId      String?
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId    String?
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId  String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId    String?
 
   @@index([companyId])
   @@index([entityType, entityId])
@@ -287,16 +292,16 @@ model File {
 }
 
 model WebhookLog {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  type        String
-  payload     Json
-  statusCode  Int
-  response    Json?
-  durationMs  Int?
-  ipAddress   String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type       String
+  payload    Json
+  statusCode Int
+  response   Json?
+  durationMs Int?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
 
   @@index([companyId])
   @@index([createdAt])
@@ -318,7 +323,7 @@ model Automation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  logs        AutomationLog[]
+  logs AutomationLog[]
 
   @@index([companyId])
   @@index([isActive])
@@ -326,14 +331,14 @@ model Automation {
 }
 
 model AutomationLog {
-  id            String     @id @default(cuid())
-  automationId  String
-  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  status        String
-  payload       Json?
-  result        Json?
-  error         String?
-  createdAt     DateTime   @default(now())
+  id           String     @id @default(cuid())
+  automationId String
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  status       String
+  payload      Json?
+  result       Json?
+  error        String?
+  createdAt    DateTime   @default(now())
 
   @@index([automationId])
   @@index([createdAt])
@@ -341,18 +346,18 @@ model AutomationLog {
 }
 
 model AuditLog {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
-  action      String
-  entityType  String
-  entityId    String?
-  diff        Json?
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  diff       Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
 
   @@index([companyId])
   @@index([entityType, entityId])
@@ -361,65 +366,65 @@ model AuditLog {
 }
 
 model Pipeline {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name        String
-  isDefault   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  stages      PipelineStage[]
+  stages PipelineStage[]
 
   @@index([companyId])
   @@map("pipelines")
 }
 
 model PipelineStage {
-  id              String   @id @default(cuid())
-  pipelineId      String
-  pipeline        Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  name            String
-  position        Int
-  winProbability  Float    @default(0)
-  color           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  pipelineId     String
+  pipeline       Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name           String
+  position       Int
+  winProbability Float    @default(0)
+  color          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  leads           Lead[]
+  leads Lead[]
 
   @@index([pipelineId])
   @@map("pipeline_stages")
 }
 
 model EmailTemplate {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name        String
-  subject     String
-  body        String
-  variables   String[] @default([])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  subject   String
+  body      String
+  variables String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([companyId])
   @@map("email_templates")
 }
 
 model Notification {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String
-  title       String
-  message     String
-  entityType  String?
-  entityId    String?
-  isRead      Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String
+  title      String
+  message    String
+  entityType String?
+  entityId   String?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
   @@index([companyId])
   @@index([userId, isRead])
@@ -433,21 +438,22 @@ enum IntegrationType {
   ZAPIER
   WHATSAPP
   GOOGLE_CALENDAR
+  PAYPLUS
 }
 
 model Integration {
-  id          String          @id @default(cuid())
-  companyId   String
-  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  type        IntegrationType
-  name        String
-  apiKey      String?
-  apiSecret   String?
-  config      Json?
-  isActive    Boolean         @default(true)
-  lastSyncAt  DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id         String          @id @default(cuid())
+  companyId  String
+  company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type       IntegrationType
+  name       String
+  apiKey     String?
+  apiSecret  String?
+  config     Json?
+  isActive   Boolean         @default(true)
+  lastSyncAt DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 
   @@unique([companyId, type])
   @@index([companyId])
@@ -474,4 +480,112 @@ model Event {
   @@map("events")
 }
 
+enum QuoteStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
 
+model Quote {
+  id           String      @id @default(cuid())
+  companyId    String
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leadId       String?
+  lead         Lead?       @relation(fields: [leadId], references: [id])
+  quoteNumber  String      @unique
+  title        String
+  description  String?
+  templateType String      @default("simple") // "simple" or "professional"
+  isTemplate   Boolean     @default(false) // האם זו תבנית
+  status       QuoteStatus @default(DRAFT)
+  subtotal     Float       @default(0)
+  discount     Float       @default(0)
+  tax          Float       @default(18)
+  total        Float       @default(0)
+  validUntil   DateTime?
+  notes        String?
+  terms        String?
+  signature    String? // Base64 signature image
+  signedAt     DateTime? // When the quote was signed
+  createdBy    String?
+  issuedAt     DateTime?
+  viewedAt     DateTime?
+  respondedAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  items    QuoteItem[]
+  payments Payment[]
+
+  @@index([companyId])
+  @@index([leadId])
+  @@index([status])
+  @@index([quoteNumber])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id              String   @id @default(cuid())
+  quoteId         String
+  quote           Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  description     String
+  richDescription String? // HTML/markdown rich description for professional template
+  quantity        Float    @default(1)
+  unitPrice       Float
+  discount        Float    @default(0)
+  total           Float
+  position        Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([quoteId])
+  @@map("quote_items")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  BANK_TRANSFER
+  CASH
+  CHECK
+  OTHER
+}
+
+model Payment {
+  id               String        @id @default(cuid())
+  companyId        String
+  company          Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId        String?
+  project          Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  quoteId          String?
+  quote            Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  amount           Float
+  currency         String        @default("ILS")
+  status           PaymentStatus @default(PENDING)
+  method           PaymentMethod @default(CREDIT_CARD)
+  transactionId    String? // מזהה עסקה ממערכת התשלום
+  paymentReference String? // מספר הפניה/קבלה
+  description      String?
+  notes            String?
+  paidAt           DateTime?
+  processedBy      String? // User ID שעיבד את התשלום
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([companyId])
+  @@index([projectId])
+  @@index([quoteId])
+  @@index([status])
+  @@index([transactionId])
+  @@map("payments")
+}

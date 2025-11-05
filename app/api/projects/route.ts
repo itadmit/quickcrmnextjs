@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
       include: {
         client: {
           select: {
+            id: true,
             name: true,
           },
         },
@@ -26,6 +27,14 @@ export async function GET(req: NextRequest) {
             id: true,
             title: true,
             status: true,
+          },
+        },
+        payments: {
+          where: {
+            status: "COMPLETED",
+          },
+          select: {
+            amount: true,
           },
         },
         _count: {
@@ -39,7 +48,13 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    return NextResponse.json(projects)
+    // הוספת סכום ששולם לכל פרויקט
+    const projectsWithPaid = projects.map((project) => ({
+      ...project,
+      paidAmount: project.payments.reduce((sum, p) => sum + p.amount, 0),
+    }))
+
+    return NextResponse.json(projectsWithPaid)
   } catch (error) {
     console.error("Error fetching projects:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

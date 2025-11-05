@@ -265,29 +265,29 @@ export default function ClientsPage() {
                                 <MoreVertical className="w-4 h-4" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
+                            <DropdownMenuContent align="end" dir="rtl">
                               <DropdownMenuItem onClick={(e) => {
                                 e.stopPropagation()
                                 router.push(`/clients/${client.id}`)
-                              }}>
-                                <Eye className="w-4 h-4 ml-2" />
+                              }} className="flex-row-reverse">
+                                <Eye className="w-4 h-4 ml-2 flex-shrink-0" />
                                 צפה בפרטים
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={(e) => {
                                 e.stopPropagation()
                                 setEditingClient(client)
-                              }}>
-                                <Edit className="w-4 h-4 ml-2" />
+                              }} className="flex-row-reverse">
+                                <Edit className="w-4 h-4 ml-2 flex-shrink-0" />
                                 ערוך
                               </DropdownMenuItem>
                               <DropdownMenuItem 
-                                className="text-red-600"
+                                className="text-red-600 flex-row-reverse"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleDeleteClient(client.id, client.name)
                                 }}
                               >
-                                <Trash className="w-4 h-4 ml-2" />
+                                <Trash className="w-4 h-4 ml-2 flex-shrink-0" />
                                 מחק
                               </DropdownMenuItem>
                             </DropdownMenuContent>

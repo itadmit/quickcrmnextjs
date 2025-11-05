@@ -18,12 +18,18 @@ export async function sendEmail({
   html,
   text,
   from = 'QuickCRM <quickcrmil@gmail.com>',
+  attachments,
 }: {
   to: string | string[]
   subject: string
   html?: string
   text?: string
   from?: string
+  attachments?: Array<{
+    filename: string
+    content: Buffer | string
+    contentType?: string
+  }>
 }): Promise<void> {
   try {
     const info = await transporter.sendMail({
@@ -32,6 +38,7 @@ export async function sendEmail({
       subject,
       text: text || '',
       html: html || text || '',
+      attachments: attachments || [],
     })
 
     console.log('✅ Email sent successfully:', info.messageId)
@@ -96,7 +103,7 @@ export function getEmailTemplate({
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
     .header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #6f65e2 0%, #b965e2 100%);
       padding: 30px 20px;
       text-align: center;
       color: white;
@@ -122,7 +129,7 @@ export function getEmailTemplate({
     .button {
       display: inline-block;
       padding: 12px 30px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #6f65e2 0%, #b965e2 100%);
       color: white !important;
       text-decoration: none;
       border-radius: 5px;
@@ -225,6 +232,45 @@ export const emailTemplates = {
     html: getEmailTemplate({
       title,
       content,
+    }),
+  }),
+
+  quoteApproved: (quoteNumber: string, leadName: string, total: number) => ({
+    subject: `הצעה אושרה: ${quoteNumber}`,
+    html: getEmailTemplate({
+      title: 'הצעה אושרה! 🎉',
+      content: `
+        <h2>הצעה אושרה בהצלחה</h2>
+        <p><strong>מספר הצעה:</strong> ${quoteNumber}</p>
+        <p><strong>לקוח:</strong> ${leadName}</p>
+        <p><strong>סכום:</strong> ₪${total.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</p>
+        <p>ההצעה אושרה על ידי הלקוח. כעת תוכל להתחיל את הפרויקט!</p>
+        <a href="${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/quotes" class="button">
+          צפה בהצעה
+        </a>
+      `,
+    }),
+  }),
+
+  paymentReceived: (amount: number, quoteNumber?: string, clientName?: string, transactionId?: string) => ({
+    subject: `💰 תשלום חדש התקבל: ₪${amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`,
+    html: getEmailTemplate({
+      title: 'תשלום חדש התקבל! 💰',
+      content: `
+        <h2>תשלום חדש התקבל בהצלחה</h2>
+        <div style="background-color: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <p style="font-size: 24px; font-weight: bold; color: #059669; margin: 0;">
+            ₪${amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+        ${quoteNumber ? `<p><strong>מספר הצעה:</strong> ${quoteNumber}</p>` : ''}
+        ${clientName ? `<p><strong>לקוח:</strong> ${clientName}</p>` : ''}
+        ${transactionId ? `<p><strong>מספר עסקה:</strong> ${transactionId}</p>` : ''}
+        <p>התשלום התקבל והתועד במערכת. הפרויקט נוצר אוטומטית.</p>
+        <a href="${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/payments" class="button">
+          צפה בתשלומים
+        </a>
+      `,
     }),
   }),
 }

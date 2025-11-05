@@ -1,5 +1,5 @@
 import { prisma } from './prisma'
-import { sendEmail as sendEmailViaGmail, emailTemplates } from './email'
+import { sendEmail as sendEmailViaGmail, emailTemplates, getEmailTemplate } from './email'
 
 /**
  * Unified Notification Service
@@ -9,7 +9,7 @@ import { sendEmail as sendEmailViaGmail, emailTemplates } from './email'
 export interface NotificationData {
   userId: string
   companyId: string
-  type: 'task' | 'lead' | 'client' | 'project' | 'meeting' | 'automation' | 'system' | 'reminder' | 'document'
+  type: 'task' | 'lead' | 'client' | 'project' | 'meeting' | 'automation' | 'system' | 'reminder' | 'document' | 'quote' | 'payment'
   title: string
   message: string
   entityType?: string
@@ -69,16 +69,13 @@ async function sendEmailNotification(data: NotificationData): Promise<void> {
 
     // Prepare email content
     const subject = data.emailSubject || data.title
-    const htmlBody = data.emailBody || `
-      <div dir="rtl" style="font-family: Arial, sans-serif;">
-        <h2>${data.title}</h2>
+    const htmlBody = data.emailBody || getEmailTemplate({
+      title: data.title,
+      content: `
         <p>${data.message}</p>
-        <hr style="margin: 20px 0;">
-        <p style="color: #666; font-size: 12px;">
-          התראה זו נשלחה מ-QuickCRM ב-${new Date().toLocaleString('he-IL')}
-        </p>
-      </div>
-    `
+      `,
+      footer: `התראה זו נשלחה מ-QuickCRM ב-${new Date().toLocaleString('he-IL')}`,
+    })
 
     await sendEmailViaGmail({
       to: user.email,
@@ -233,5 +230,123 @@ export async function notifySystemAlert(params: {
     message: params.message,
     sendEmail: params.sendEmail ?? true,
   })
+}
+
+export async function notifyQuoteApproved(params: {
+  userId: string
+  companyId: string
+  quoteId: string
+  quoteNumber: string
+  leadName: string
+  total: number
+}) {
+  await sendNotification({
+    userId: params.userId,
+    companyId: params.companyId,
+    type: 'quote',
+    title: 'הצעה אושרה',
+    message: `הצעה ${params.quoteNumber} של ${params.leadName} אושרה. סכום: ₪${params.total.toLocaleString('he-IL')}`,
+    entityType: 'quote',
+    entityId: params.quoteId,
+    sendEmail: true,
+    emailSubject: `הצעה אושרה: ${params.quoteNumber}`,
+    emailBody: emailTemplates.quoteApproved(params.quoteNumber, params.leadName, params.total).html,
+  })
+}
+
+export async function notifyPaymentReceived(params: {
+  userId: string | null // יכול להיות null אם זה callback
+  companyId: string
+  paymentId: string
+  amount: number
+  quoteNumber?: string
+  clientName?: string
+  transactionId?: string
+  sendEmailToAllManagers?: boolean // שליחה לכל המנהלים
+}) {
+  // אם יש userId, נשלח התראה למשתמש הספציפי
+  if (params.userId) {
+    await sendNotification({
+      userId: params.userId,
+      companyId: params.companyId,
+      type: 'payment',
+      title: 'תשלום התקבל',
+      message: `תשלום מקדמה בסך ₪${params.amount.toLocaleString('he-IL')} התקבל${params.quoteNumber ? ` עבור הצעה ${params.quoteNumber}` : ''}${params.transactionId ? `. מספר אישור: ${params.transactionId}` : ''}`,
+      entityType: 'payment',
+      entityId: params.paymentId,
+      sendEmail: true,
+      emailSubject: `תשלום מקדמה התקבל: ₪${params.amount.toLocaleString('he-IL')}`,
+      emailBody: emailTemplates.paymentReceived(params.amount, params.quoteNumber, params.clientName, params.transactionId).html,
+    })
+  }
+
+  // אם צריך לשלוח לכל המנהלים (תמיד נשלח גם אם אין userId)
+  if (params.sendEmailToAllManagers || !params.userId) {
+    await sendPaymentNotificationToManagers(params)
+  }
+}
+
+/**
+ * Send payment notification to all managers/admins in the company
+ */
+async function sendPaymentNotificationToManagers(params: {
+  companyId: string
+  amount: number
+  quoteNumber?: string
+  clientName?: string
+  transactionId?: string
+}) {
+  try {
+    // מציאת כל המנהלים והמנהלים בחברה
+    const managers = await prisma.user.findMany({
+      where: {
+        companyId: params.companyId,
+        role: {
+          in: ['ADMIN', 'MANAGER'],
+        },
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    })
+
+    // שליחת התראה לכל המנהלים
+    for (const manager of managers) {
+      if (manager.email) {
+        try {
+          await sendEmailViaGmail({
+            to: manager.email,
+            subject: `💰 תשלום חדש התקבל: ₪${params.amount.toLocaleString('he-IL')}`,
+            html: emailTemplates.paymentReceived(params.amount, params.quoteNumber, params.clientName, params.transactionId).html,
+          })
+          console.log(`📧 Payment notification email sent to manager ${manager.email}`)
+        } catch (error) {
+          console.error(`Error sending email to manager ${manager.email}:`, error)
+        }
+      }
+
+      // יצירת התראה במערכת
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: manager.id,
+            companyId: params.companyId,
+            type: 'payment',
+            title: 'תשלום התקבל',
+            message: `תשלום מקדמה בסך ₪${params.amount.toLocaleString('he-IL')} התקבל${params.quoteNumber ? ` עבור הצעה ${params.quoteNumber}` : ''}${params.clientName ? ` מלקוח ${params.clientName}` : ''}${params.transactionId ? `. מספר אישור: ${params.transactionId}` : ''}`,
+            entityType: 'payment',
+            entityId: params.transactionId || undefined,
+            isRead: false,
+          },
+        })
+      } catch (error) {
+        console.error(`Error creating notification for manager ${manager.id}:`, error)
+      }
+    }
+  } catch (error) {
+    console.error('Error sending payment notifications to managers:', error)
+  }
 }
 

@@ -40,6 +40,7 @@ interface Client {
   address: string | null
   status: string
   notes: string | null
+  signature: string | null
   owner: { name: string } | null
   projects: Array<{
     id: string
@@ -52,6 +53,43 @@ interface Client {
       priority: string
       dueDate: string | null
     }>
+    payments: Array<{
+      id: string
+      amount: number
+      status: string
+      method: string
+      transactionId: string | null
+      paymentReference: string | null
+      description: string | null
+      paidAt: string | null
+      createdAt: string
+      quote: {
+        id: string
+        quoteNumber: string
+        title: string
+        total: number
+      } | null
+    }>
+  }>
+  directPayments?: Array<{
+    id: string
+    amount: number
+    status: string
+    method: string
+    transactionId: string | null
+    paymentReference: string | null
+    description: string | null
+    paidAt: string | null
+    createdAt: string
+    project: {
+      id: string | null
+      name: string
+    }
+    quote: {
+      id: string
+      quoteNumber: string
+      title: string
+    } | null
   }>
   budgets: Array<{
     id: string
@@ -67,32 +105,75 @@ interface Client {
     dueDate: string | null
     project: { name: string } | null
   }>
+  files?: Array<{
+    id: string
+    name: string
+    path: string
+    size: number
+    mimeType: string | null
+    createdAt: string
+    entityType: string
+    entityId: string
+  }>
   createdAt: string
 }
 
 export default function ClientDetailPage() {
   const params = useParams()
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState<"overview" | "projects" | "tasks" | "budgets" | "files" | "timeline">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "projects" | "tasks" | "payments" | "files" | "timeline">("overview")
   const [isEditing, setIsEditing] = useState(false)
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
-  
-  // Mock timeline data - יש להחליף בנתונים אמיתיים מה-API
-  const timeline = [
-    { 
-      id: '1', 
-      type: 'created', 
-      title: 'לקוח נוצר', 
-      description: 'הלקוח נוסף למערכת', 
-      date: new Date().toLocaleDateString('he-IL'),
-      user: 'מערכת'
-    }
-  ]
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     fetchClient()
   }, [])
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("entityType", "client")
+        formData.append("entityId", params.id as string)
+        formData.append("clientId", params.id as string)
+
+        const response = await fetch("/api/files/upload", {
+          method: "POST",
+          body: formData,
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to upload file")
+        }
+      }
+
+      toast({
+        title: "הקובץ הועלה בהצלחה",
+        description: "הקובץ נוסף לקבצים",
+      })
+
+      // רענון נתוני הלקוח
+      await fetchClient()
+    } catch (error) {
+      console.error("Error uploading file:", error)
+      toast({
+        title: "שגיאה בהעלאת קובץ",
+        description: "לא הצלחנו להעלות את הקובץ",
+        variant: "destructive",
+      })
+    } finally {
+      setUploading(false)
+      // איפוס ה-input
+      e.target.value = ""
+    }
+  }
 
   const fetchClient = async () => {
     try {
@@ -164,8 +245,114 @@ export default function ClientDetailPage() {
     completedTasks: project.tasks.filter(t => t.status === 'DONE').length,
   }))
 
+  if (!client) {
+    return (
+      <AppLayout>
+        <div className="text-center py-12">
+          <Building className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">לקוח לא נמצא</h3>
+          <Link href="/clients">
+            <Button variant="outline">חזרה ללקוחות</Button>
+          </Link>
+        </div>
+      </AppLayout>
+    )
+  }
+
   const budgets = client.budgets
   const tasks = client.tasks
+  
+  // איסוף כל התשלומים מכל הפרויקטים + תשלומים ישירים
+  const projectPayments = client.projects.flatMap(project => 
+    (project.payments || []).map(payment => ({
+      ...payment,
+      project: {
+        id: project.id,
+        name: project.name,
+      },
+    }))
+  )
+  
+  const directPayments = (client.directPayments || []).map(payment => ({
+    ...payment,
+    project: payment.project || { id: null, name: "תשלום ישיר" },
+  }))
+  
+  const allPayments = [...projectPayments, ...directPayments].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
+  
+  const completedPayments = allPayments.filter(p => p.status === "COMPLETED")
+  const totalPaid = completedPayments.reduce((sum, p) => sum + p.amount, 0)
+  
+  // חישוב יתרה לכל הצעה
+  // קיבוץ תשלומים לפי הצעה
+  const paymentsByQuote = new Map<string, { quote: any, payments: typeof allPayments }>()
+  
+  allPayments.forEach(payment => {
+    if (payment.quote) {
+      const quoteId = payment.quote.id
+      if (!paymentsByQuote.has(quoteId)) {
+        paymentsByQuote.set(quoteId, {
+          quote: payment.quote,
+          payments: []
+        })
+      }
+      paymentsByQuote.get(quoteId)!.payments.push(payment)
+    }
+  })
+  
+  // חישוב יתרה לכל הצעה
+  const quoteBalances = Array.from(paymentsByQuote.values()).map(({ quote, payments }) => {
+    const quoteTotal = quote.total || 0
+    const paidForQuote = payments
+      .filter(p => p.status === "COMPLETED")
+      .reduce((sum, p) => sum + p.amount, 0)
+    const balance = quoteTotal - paidForQuote
+    
+    return {
+      quoteId: quote.id,
+      quoteNumber: quote.quoteNumber,
+      quoteTotal,
+      paidForQuote,
+      balance
+    }
+  })
+  
+  // חישוב יתרה כוללת (רק עבור הצעות שיש להן תשלומים)
+  // אם יש כמה הצעות, נחשב את היתרה רק עבור הצעות שיש להן תשלומים
+  const totalQuoteAmount = quoteBalances.length > 0 
+    ? quoteBalances.reduce((sum, q) => sum + q.quoteTotal, 0)
+    : 0
+  const totalPaidForQuotes = quoteBalances.length > 0
+    ? quoteBalances.reduce((sum, q) => sum + q.paidForQuote, 0)
+    : totalPaid
+  const totalBalance = totalQuoteAmount > 0 ? totalQuoteAmount - totalPaidForQuotes : 0
+  
+  // יצירת ציר זמן מתאריכים אמיתיים
+  const timeline = [
+    ...(client.createdAt ? [{
+      id: 'client-created',
+      type: 'created' as const,
+      title: 'לקוח נוצר',
+      description: 'הלקוח נוסף למערכת',
+      date: new Date(client.createdAt).toLocaleDateString('he-IL'),
+      user: 'מערכת'
+    }] : []),
+    ...allPayments.map((payment) => ({
+      id: `payment-${payment.id}`,
+      type: 'payment' as const,
+      title: `תשלום ${payment.status === 'COMPLETED' ? 'הושלם' : payment.status === 'PENDING' ? 'ממתין' : payment.status}`,
+      description: payment.description || `תשלום בסך ₪${payment.amount.toLocaleString('he-IL')}${payment.quote ? ` עבור הצעה ${payment.quote.quoteNumber}` : ''}`,
+      date: new Date(payment.createdAt).toLocaleDateString('he-IL'),
+      user: 'מערכת',
+      payment: payment,
+    })),
+  ].sort((a, b) => {
+    const dateA = a.type === 'created' ? new Date(client.createdAt || 0) : new Date(a.payment?.createdAt || 0)
+    const dateB = b.type === 'created' ? new Date(client.createdAt || 0) : new Date(b.payment?.createdAt || 0)
+    return dateB.getTime() - dateA.getTime()
+  })
 
   const statusColors: Record<string, string> = {
     PLANNING: "bg-gray-100 text-gray-800",
@@ -274,9 +461,12 @@ export default function ClientDetailPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm text-gray-500 mb-1">תקציב כולל</div>
-                  <div className="text-3xl font-bold text-green-600">
-                    {(projects.reduce((sum, p) => sum + p.budget, 0) / 1000).toFixed(0)}K ₪
+                  <div className="text-sm text-gray-500 mb-1">תשלומים</div>
+                  <div className="text-2xl font-bold text-green-600">
+                    ₪{totalPaid.toLocaleString('he-IL', { minimumFractionDigits: 0 })}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {completedPayments.length} תשלומים הושלמו
                   </div>
                 </div>
                 <Coins className="w-8 h-8 text-green-600" />
@@ -305,7 +495,7 @@ export default function ClientDetailPage() {
               { key: "overview", label: "סקירה" },
               { key: "projects", label: "פרויקטים" },
               { key: "tasks", label: "משימות" },
-              { key: "budgets", label: "תקציבים" },
+              { key: "payments", label: "תשלומים" },
               { key: "files", label: "קבצים" },
               { key: "timeline", label: "ציר זמן" },
             ].map((tab) => (
@@ -338,29 +528,25 @@ export default function ClientDetailPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label>שם החברה</Label>
-                        <Input value={client.name} disabled={!isEditing} className="mt-1" />
-                      </div>
-                      <div>
-                        <Label>איש קשר</Label>
-                        <Input value={client.contact} disabled={!isEditing} className="mt-1" />
+                        <Input value={client.name || ""} disabled={!isEditing} className="mt-1" />
                       </div>
                       <div>
                         <Label>אימייל</Label>
-                        <Input value={client.email} disabled={!isEditing} className="mt-1" />
+                        <Input value={client.email || ""} disabled={!isEditing} className="mt-1" />
                       </div>
                       <div>
                         <Label>טלפון</Label>
-                        <Input value={client.phone} disabled={!isEditing} className="mt-1" />
+                        <Input value={client.phone || ""} disabled={!isEditing} className="mt-1" />
                       </div>
                       <div className="col-span-2">
                         <Label>כתובת</Label>
-                        <Input value={client.address} disabled={!isEditing} className="mt-1" />
+                        <Input value={client.address || ""} disabled={!isEditing} className="mt-1" />
                       </div>
                       <div className="col-span-2">
                         <Label>הערות</Label>
                         <textarea 
                           className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          value={client.notes}
+                          value={client.notes || ""}
                           disabled={!isEditing}
                         />
                       </div>
@@ -527,53 +713,131 @@ export default function ClientDetailPage() {
               </>
             )}
 
-            {/* Budgets Tab */}
-            {activeTab === "budgets" && (
-              <Card className="shadow-sm">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>תקציבים והצעות</CardTitle>
-                    <Button size="sm">+ תקציב חדש</Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {budgets.map((budget) => (
-                      <div key={budget.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                        <div className="flex-1">
-                          <h4 className="font-medium text-gray-900">{budget.name}</h4>
-                          <div className="text-sm text-gray-600 mt-1">
-                            תאריך צפוי: {budget.expectedAt}
-                            {budget.paidAt && ` • שולם: ${budget.paidAt}`}
+            {/* Payments Tab */}
+            {activeTab === "payments" && (
+              <>
+                {/* סיכום תשלומים */}
+                {quoteBalances.length > 0 && (
+                  <Card className="shadow-sm mb-6">
+                    <CardHeader>
+                      <CardTitle>סיכום תשלומים</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="text-center p-4 bg-blue-50 rounded-lg">
+                          <div className="text-sm text-gray-600 mb-1">סכום כל הפרויקט</div>
+                          <div className="text-2xl font-bold text-blue-600">
+                            ₪{totalQuoteAmount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="text-lg font-bold text-green-600">
-                            {(budget.amount / 1000).toFixed(0)}K ₪
-                          </span>
-                          <span className={`text-xs px-2 py-1 rounded ${budgetStatusColors[budget.status]}`}>
-                            {budget.status === "PAID" ? "שולם" : "ממתין"}
-                          </span>
+                        <div className="text-center p-4 bg-green-50 rounded-lg">
+                          <div className="text-sm text-gray-600 mb-1">שולם מקדמה</div>
+                          <div className="text-2xl font-bold text-green-600">
+                            ₪{totalPaidForQuotes.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-orange-50 rounded-lg">
+                          <div className="text-sm text-gray-600 mb-1">יתרה לתשלום</div>
+                          <div className="text-2xl font-bold text-orange-600">
+                            {totalBalance > 0 ? (
+                              `₪${totalBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`
+                            ) : (
+                              <span className="text-green-600">שולם במלואו</span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="flex items-center justify-between text-lg font-bold">
-                      <span>סה״כ:</span>
-                      <span className="text-green-600">
-                        {(budgets.reduce((sum, b) => sum + b.amount, 0) / 1000).toFixed(0)}K ₪
-                      </span>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <Card className="shadow-sm">
+                  <CardHeader>
+                    <CardTitle>תשלומים ({allPayments.length})</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                  {allPayments.length === 0 ? (
+                    <div className="text-center text-gray-400 py-12">
+                      <Coins className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>אין תשלומים להצגה</p>
                     </div>
-                    <div className="flex items-center justify-between text-sm text-gray-600 mt-1">
-                      <span>שולם:</span>
-                      <span>
-                        {(budgets.filter(b => b.status === "PAID").reduce((sum, b) => sum + b.amount, 0) / 1000).toFixed(0)}K ₪
-                      </span>
+                  ) : (
+                    <div className="space-y-3">
+                      {allPayments.map((payment) => {
+                        // מציאת היתרה להצעה הזו (אם יש)
+                        const quoteBalance = payment.quote 
+                          ? quoteBalances.find(b => b.quoteId === payment.quote.id)
+                          : null
+                        
+                        return (
+                        <div key={payment.id} className="p-4 border rounded-lg hover:bg-gray-50">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900">
+                                {payment.description || `תשלום #${payment.transactionId || payment.id.slice(-6)}`}
+                              </h4>
+                              <div className="text-sm text-gray-600 mt-1">
+                                {payment.project.name}
+                                {payment.quote && ` • הצעה ${payment.quote.quoteNumber}`}
+                              </div>
+                              {quoteBalance && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  סכום הצעה: ₪{quoteBalance.quoteTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 })} • 
+                                  שולם: ₪{quoteBalance.paidForQuote.toLocaleString('he-IL', { minimumFractionDigits: 2 })} • 
+                                  {quoteBalance.balance > 0 ? (
+                                    <span className="text-orange-600 font-semibold">
+                                      יתרה: ₪{quoteBalance.balance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
+                                    </span>
+                                  ) : (
+                                    <span className="text-green-600 font-semibold">
+                                      שולם במלואו
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-500 mt-1">
+                                {new Date(payment.createdAt).toLocaleDateString('he-IL', {
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                                {payment.paidAt && (
+                                  <span> • שולם ב-{new Date(payment.paidAt).toLocaleDateString('he-IL')}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <span className="text-lg font-bold text-green-600">
+                                ₪{payment.amount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
+                              </span>
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                payment.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                                payment.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                                payment.status === 'PROCESSING' ? 'bg-blue-100 text-blue-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                {payment.status === 'COMPLETED' ? 'הושלם' :
+                                 payment.status === 'PENDING' ? 'ממתין' :
+                                 payment.status === 'PROCESSING' ? 'מעבד' :
+                                 payment.status}
+                              </span>
+                              {payment.paymentReference && (
+                                <span className="text-xs text-gray-500">
+                                  אישור: {payment.paymentReference}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        )
+                      })}
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
+              </>
             )}
 
             {/* Files Tab */}
@@ -581,19 +845,77 @@ export default function ClientDetailPage() {
               <Card className="shadow-sm">
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle>קבצים</CardTitle>
-                    <Button size="sm">
-                      <Paperclip className="w-4 h-4 ml-2" />
-                      העלה קובץ
-                    </Button>
+                    <CardTitle>קבצים ({client?.files?.length || 0})</CardTitle>
+                    <label>
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                        disabled={uploading}
+                        multiple
+                      />
+                      <Button size="sm" className="prodify-gradient text-white" disabled={uploading}>
+                        <Paperclip className="w-4 h-4 ml-2" />
+                        {uploading ? "מעלה..." : "העלה קובץ"}
+                      </Button>
+                    </label>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center text-gray-400 py-12">
-                    <Paperclip className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p>אין קבצים מצורפים</p>
-                    <p className="text-sm mt-1">גרור קבצים לכאן או לחץ להעלאה</p>
-                  </div>
+                  {!client?.files || client.files.length === 0 ? (
+                    <div className="text-center text-gray-400 py-12">
+                      <Paperclip className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>אין קבצים מצורפים</p>
+                      <p className="text-sm mt-1">גרור קבצים לכאן או לחץ להעלאה</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {client.files.map((file) => (
+                        <div key={file.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                          <div className="flex items-center gap-3 flex-1">
+                            <Paperclip className="w-5 h-5 text-gray-400" />
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900">{file.name}</h4>
+                              <div className="text-xs text-gray-500 mt-1">
+                                {(file.size / 1024).toFixed(2)} KB • {new Date(file.createdAt).toLocaleDateString('he-IL')}
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/files/${file.id}/download`, {
+                                  credentials: 'include',
+                                })
+                                if (res.ok) {
+                                  const blob = await res.blob()
+                                  const url = window.URL.createObjectURL(blob)
+                                  const a = document.createElement("a")
+                                  a.href = url
+                                  a.download = file.name
+                                  document.body.appendChild(a)
+                                  a.click()
+                                  document.body.removeChild(a)
+                                  window.URL.revokeObjectURL(url)
+                                } else {
+                                  const error = await res.json()
+                                  console.error("Error downloading file:", error)
+                                  alert("שגיאה בהורדת הקובץ: " + (error.error || "שגיאה לא ידועה"))
+                                }
+                              } catch (error) {
+                                console.error("Error downloading file:", error)
+                                alert("שגיאה בהורדת הקובץ")
+                              }
+                            }}
+                          >
+                            הורד
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -614,6 +936,7 @@ export default function ClientDetailPage() {
                             {event.type === "project" && <FolderKanban className="w-4 h-4 text-purple-600" />}
                             {event.type === "note" && <MessageSquare className="w-4 h-4 text-purple-600" />}
                             {event.type === "budget" && <Coins className="w-4 h-4 text-purple-600" />}
+                            {event.type === "payment" && <Coins className="w-4 h-4 text-green-600" />}
                           </div>
                           {event.id !== timeline[timeline.length - 1].id && (
                             <div className="w-0.5 h-12 bg-gray-200"></div>
@@ -677,14 +1000,31 @@ export default function ClientDetailPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500">תאריך יצירה</span>
-                  <span className="font-medium">{client.createdAt}</span>
-                </div>
-                <div className="pt-3 border-t">
-                  <div className="text-gray-500 mb-2">כתובת</div>
-                  <div className="font-medium">{client.address}</div>
                 </div>
               </CardContent>
             </Card>
+
+            {/* Signature */}
+            {client.signature && (
+              <Card className="shadow-sm">
+                <CardHeader>
+                  <CardTitle>חתימה דיגיטלית</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="border-2 border-gray-200 rounded-lg p-4 bg-white">
+                    <img 
+                      src={client.signature} 
+                      alt="חתימת הלקוח" 
+                      className="max-w-full h-auto"
+                      style={{ maxHeight: '200px' }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    חתימה זו נשמרה בעת אישור הצעת המחיר
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { prisma } from './prisma'
-import { sendEmail as sendEmailViaGmail, parseEmailTemplate } from './email'
+import { sendEmail as sendEmailViaGmail, parseEmailTemplate, getEmailTemplate } from './email'
 
 // Types for automation system
 export type TriggerType = 
@@ -9,6 +9,9 @@ export type TriggerType =
   | 'task_created'
   | 'meeting_scheduled'
   | 'client_added'
+  | 'quote_accepted'
+  | 'payment_received'
+  | 'project_created'
 
 export type ActionType =
   | 'send_email'
@@ -269,11 +272,31 @@ export class AutomationEngine {
       const subject = parseEmailTemplate(template.subject, triggerData.data)
       const body = parseEmailTemplate(template.body, triggerData.data)
 
+      // Check if body already contains full HTML with RTL
+      // If not, wrap it in our RTL email template
+      let htmlBody = body
+      if (!body.includes('<!DOCTYPE html>') && !body.includes('<html')) {
+        // Wrap in RTL template if it's just content
+        htmlBody = getEmailTemplate({
+          title: subject,
+          content: body,
+          footer: 'הודעה זו נשלחה אוטומטית מ-QuickCRM',
+        })
+      } else if (!body.includes('dir="rtl"') && !body.includes("dir='rtl'")) {
+        // If it's HTML but no RTL, add dir="rtl" to html tag
+        htmlBody = body.replace(/<html[^>]*>/i, (match) => {
+          if (!match.includes('dir=')) {
+            return match.replace('>', ' dir="rtl" lang="he">')
+          }
+          return match
+        })
+      }
+
       // Send the email via Gmail SMTP
       await sendEmailViaGmail({
         to: recipientEmail,
         subject,
-        html: body,
+        html: htmlBody,
       })
 
       console.log(`📧 Email sent successfully to ${recipientEmail} using template: ${template.name}`)

@@ -6,11 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Copy, RefreshCw, Eye, EyeOff, ExternalLink, CheckCircle2, XCircle, FileText } from "lucide-react"
+import { Copy, RefreshCw, Eye, EyeOff, ExternalLink, CheckCircle2, XCircle, FileText, CreditCard } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
 export default function IntegrationsPage() {
   const { toast } = useToast()
+  const [activeTab, setActiveTab] = useState<"api" | "integrations" | "logs">("api")
   const [showApiKey, setShowApiKey] = useState(false)
   const [apiKey] = useState("crm_live_1234567890abcdefghijklmnop")
   
@@ -22,6 +23,16 @@ export default function IntegrationsPage() {
   const [invoice4uLoading, setInvoice4uLoading] = useState(false)
   const [invoice4uTesting, setInvoice4uTesting] = useState(false)
   const [useProduction, setUseProduction] = useState(false)
+
+  // PayPlus Integration State
+  const [payplusApiKey, setPayplusApiKey] = useState("")
+  const [payplusSecretKey, setPayplusSecretKey] = useState("")
+  const [payplusPaymentPageUid, setPayplusPaymentPageUid] = useState("")
+  const [showPayplusSecretKey, setShowPayplusSecretKey] = useState(false)
+  const [payplusConnected, setPayplusConnected] = useState(false)
+  const [payplusLoading, setPayplusLoading] = useState(false)
+  const [payplusTesting, setPayplusTesting] = useState(false)
+  const [payplusUseProduction, setPayplusUseProduction] = useState(false)
 
   // Mock webhook logs
   const webhookLogs = [
@@ -53,6 +64,25 @@ export default function IntegrationsPage() {
       .then(data => {
         if (data.integration && data.integration.isActive) {
           setInvoice4uConnected(true)
+        }
+      })
+      .catch(console.error)
+  }, [])
+
+  // Load PayPlus integration status
+  useEffect(() => {
+    fetch('/api/integrations/payplus')
+      .then(res => res.json())
+      .then(data => {
+        if (data.integration && data.integration.isActive) {
+          setPayplusConnected(true)
+          const config = data.integration.config || {}
+          if (config.paymentPageUid) {
+            setPayplusPaymentPageUid(config.paymentPageUid)
+          }
+          if (config.useProduction) {
+            setPayplusUseProduction(true)
+          }
         }
       })
       .catch(console.error)
@@ -196,6 +226,137 @@ export default function IntegrationsPage() {
     }
   }
 
+  const testPayPlusConnection = async () => {
+    if (!payplusApiKey || !payplusSecretKey || !payplusPaymentPageUid) {
+      toast({
+        title: "שגיאה",
+        description: "נא למלא את כל השדות",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setPayplusTesting(true)
+    try {
+      const res = await fetch('/api/integrations/payplus/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: payplusApiKey,
+          secretKey: payplusSecretKey,
+          paymentPageUid: payplusPaymentPageUid,
+          useProduction: payplusUseProduction,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        toast({
+          title: "הצלחה!",
+          description: data.message || "החיבור ל-PayPlus תקין",
+        })
+      } else {
+        toast({
+          title: "שגיאה בבדיקה",
+          description: data.error || data.details || "לא הצלחנו לבדוק את החיבור",
+          variant: "destructive",
+          duration: 10000,
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה בבדיקת החיבור",
+        variant: "destructive",
+      })
+    } finally {
+      setPayplusTesting(false)
+    }
+  }
+
+  const connectPayPlus = async () => {
+    if (!payplusApiKey || !payplusSecretKey || !payplusPaymentPageUid) {
+      toast({
+        title: "שגיאה",
+        description: "נא למלא את כל השדות",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setPayplusLoading(true)
+    try {
+      const res = await fetch('/api/integrations/payplus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: payplusApiKey,
+          secretKey: payplusSecretKey,
+          paymentPageUid: payplusPaymentPageUid,
+          name: 'PayPlus',
+          useProduction: payplusUseProduction,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok) {
+        setPayplusConnected(true)
+        toast({
+          title: "הצלחה!",
+          description: "החיבור ל-PayPlus הושלם בהצלחה",
+        })
+      } else {
+        console.error('PayPlus connection failed:', data)
+        toast({
+          title: "שגיאה בהתחברות",
+          description: data.error || data.details || "לא הצלחנו להתחבר ל-PayPlus. אנא בדוק את פרטי ההתחברות.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה בחיבור ל-PayPlus",
+        variant: "destructive",
+      })
+    } finally {
+      setPayplusLoading(false)
+    }
+  }
+
+  const disconnectPayPlus = async () => {
+    try {
+      const res = await fetch('/api/integrations/payplus', {
+        method: 'DELETE',
+      })
+
+      if (res.ok) {
+        setPayplusConnected(false)
+        setPayplusApiKey("")
+        setPayplusSecretKey("")
+        setPayplusPaymentPageUid("")
+        toast({
+          title: "התנתקות הצליחה",
+          description: "החיבור ל-PayPlus נותק",
+        })
+      } else {
+        toast({
+          title: "שגיאה",
+          description: "לא הצלחנו להתנתק",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה בהתנתקות",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -204,8 +365,34 @@ export default function IntegrationsPage() {
           <p className="text-gray-500 mt-1">נהל את האינטגרציות והחיבורים עם מערכות חיצוניות</p>
         </div>
 
-        {/* API Key Section */}
-        <Card className="shadow-sm">
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <div className="flex gap-6">
+            {[
+              { key: "api", label: "API & Webhooks" },
+              { key: "integrations", label: "אינטגרציות" },
+              { key: "logs", label: "לוגים" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as any)}
+                className={`pb-3 border-b-2 transition-colors ${
+                  activeTab === tab.key
+                    ? "border-purple-600 text-purple-600 font-medium"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* API & Webhooks Tab */}
+        {activeTab === "api" && (
+          <div className="space-y-6">
+            {/* API Key Section */}
+            <Card className="shadow-sm">
           <CardHeader>
             <CardTitle>מפתח API</CardTitle>
             <CardDescription>
@@ -244,10 +431,67 @@ export default function IntegrationsPage() {
               </p>
             </div>
           </CardContent>
-        </Card>
+            </Card>
 
-        {/* Invoice4U Integration */}
-        <Card className="shadow-sm">
+            {/* Webhook Endpoint */}
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle>Webhook - קבלת לידים</CardTitle>
+                <CardDescription>
+                  שלח לידים חדשים למערכת דרך Webhook
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label>Endpoint URL</Label>
+                  <div className="flex gap-2 mt-2">
+                    <Input
+                      type="text"
+                      value="https://your-domain.com/api/webhooks/leads"
+                      readOnly
+                      className="font-mono"
+                    />
+                    <Button variant="outline" onClick={() => copyToClipboard("https://your-domain.com/api/webhooks/leads")}>
+                      <Copy className="w-4 h-4 ml-2" />
+                      העתק
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  <h4 className="font-medium text-sm">דוגמת שימוש</h4>
+                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-x-auto" dir="ltr">
+{`POST /api/webhooks/leads
+Content-Type: application/json
+X-API-KEY: ${apiKey}
+
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "phone": "+972501234567",
+  "source": "Facebook Ads",
+  "tags": ["hot-lead", "enterprise"]
+}`}
+                  </pre>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button variant="outline">
+                    <ExternalLink className="w-4 h-4 ml-2" />
+                    תיעוד API
+                  </Button>
+                  <Button variant="outline">שלח בדיקה</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Integrations Tab */}
+        {activeTab === "integrations" && (
+          <div className="space-y-6">
+            {/* Invoice4U Integration */}
+            <Card className="shadow-sm">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -386,60 +630,167 @@ export default function IntegrationsPage() {
           </CardContent>
         </Card>
 
-        {/* Webhook Endpoint */}
+        {/* PayPlus Integration */}
         <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle>Webhook - קבלת לידים</CardTitle>
-            <CardDescription>
-              שלח לידים חדשים למערכת דרך Webhook
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <CreditCard className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <CardTitle>PayPlus - תשלומים</CardTitle>
+                  <CardDescription>
+                    חבר את החשבון שלך ב-PayPlus לעיבוד תשלומים מאובטחים
+                  </CardDescription>
+                </div>
+              </div>
+              {payplusConnected && (
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span className="text-sm font-medium">מחובר</span>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label>Endpoint URL</Label>
-              <div className="flex gap-2 mt-2">
-                <Input
-                  type="text"
-                  value="https://your-domain.com/api/webhooks/leads"
-                  readOnly
-                  className="font-mono"
-                />
-                <Button variant="outline" onClick={() => copyToClipboard("https://your-domain.com/api/webhooks/leads")}>
-                  <Copy className="w-4 h-4 ml-2" />
-                  העתק
+            {!payplusConnected ? (
+              <>
+                <div>
+                  <Label htmlFor="payplus-api-key">API Key</Label>
+                  <Input
+                    id="payplus-api-key"
+                    type="text"
+                    placeholder="הזן את ה-API Key מ-PayPlus"
+                    value={payplusApiKey}
+                    onChange={(e) => setPayplusApiKey(e.target.value)}
+                    className="mt-2"
+                    dir="ltr"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="payplus-secret-key">Secret Key</Label>
+                  <div className="flex gap-2 mt-2">
+                    <div className="flex-1 relative">
+                      <Input
+                        id="payplus-secret-key"
+                        type={showPayplusSecretKey ? "text" : "password"}
+                        placeholder="הזן את ה-Secret Key מ-PayPlus"
+                        value={payplusSecretKey}
+                        onChange={(e) => setPayplusSecretKey(e.target.value)}
+                        className="pr-10"
+                        dir="ltr"
+                      />
+                      <button
+                        onClick={() => setShowPayplusSecretKey(!showPayplusSecretKey)}
+                        className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPayplusSecretKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="payplus-payment-page-uid">Payment Page UID</Label>
+                  <Input
+                    id="payplus-payment-page-uid"
+                    type="text"
+                    placeholder="הזן את ה-Payment Page UID מ-PayPlus"
+                    value={payplusPaymentPageUid}
+                    onChange={(e) => setPayplusPaymentPageUid(e.target.value)}
+                    className="mt-2"
+                    dir="ltr"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="payplus-use-production"
+                    checked={payplusUseProduction}
+                    onChange={(e) => setPayplusUseProduction(e.target.checked)}
+                    className="rounded"
+                  />
+                  <Label htmlFor="payplus-use-production" className="font-normal cursor-pointer">
+                    שימוש בסביבת ייצור (Production)
+                  </Label>
+                </div>
+
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-2">
+                  <p className="text-sm text-orange-900">
+                    💡 <strong>איפה למצוא את הפרטים?</strong>
+                  </p>
+                  <p className="text-sm text-orange-700">
+                    התחבר ל-<a href="https://www.payplus.co.il" target="_blank" rel="noopener noreferrer" className="underline hover:text-orange-800">PayPlus</a> ונווט ל-API Settings
+                  </p>
+                  <ul className="text-xs text-orange-600 mr-4 space-y-1">
+                    <li>• API Key ו-Secret Key נמצאים תחת API Credentials</li>
+                    <li>• Payment Page UID נמצא תחת Payment Pages</li>
+                    <li>• בחר "Production" אם זה חשבון ייצור</li>
+                    <li>• ודא שיש לך הרשאות מתכנת (Developer) בחשבון</li>
+                  </ul>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={testPayPlusConnection}
+                    disabled={payplusTesting || payplusLoading}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    {payplusTesting ? "בודק..." : "🔍 בדוק חיבור"}
+                  </Button>
+                  <Button
+                    onClick={connectPayPlus}
+                    disabled={payplusLoading || payplusTesting}
+                    className="flex-1 prodify-gradient text-white"
+                  >
+                    {payplusLoading ? "מתחבר..." : "התחבר ל-PayPlus"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-sm text-green-900 font-medium">
+                    ✅ החשבון מחובר בהצלחה!
+                  </p>
+                  <p className="text-sm text-green-700 mt-1">
+                    כעת תוכל לעבד תשלומים דרך PayPlus ישירות מההצעות מחיר
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">תכונות זמינות:</h4>
+                  <ul className="text-sm text-gray-600 space-y-1 mr-4">
+                    <li>• יצירת קישורי תשלום מאובטחים</li>
+                    <li>• עיבוד תשלומי כרטיס אשראי</li>
+                    <li>• תשלומים בתשלומים</li>
+                    <li>• קבלת עדכונים אוטומטיים על תשלומים</li>
+                  </ul>
+                </div>
+
+                <Button
+                  onClick={disconnectPayPlus}
+                  variant="outline"
+                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  נתק חיבור
                 </Button>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-              <h4 className="font-medium text-sm">דוגמת שימוש</h4>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-x-auto" dir="ltr">
-{`POST /api/webhooks/leads
-Content-Type: application/json
-X-API-KEY: ${apiKey}
-
-{
-  "name": "John Doe",
-  "email": "john@example.com",
-  "phone": "+972501234567",
-  "source": "Facebook Ads",
-  "tags": ["hot-lead", "enterprise"]
-}`}
-              </pre>
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="outline">
-                <ExternalLink className="w-4 h-4 ml-2" />
-                תיעוד API
-              </Button>
-              <Button variant="outline">שלח בדיקה</Button>
-            </div>
+              </>
+            )}
           </CardContent>
-        </Card>
+            </Card>
+          </div>
+        )}
 
-        {/* Webhook Logs */}
-        <Card className="shadow-sm">
+        {/* Logs Tab */}
+        {activeTab === "logs" && (
+          <div className="space-y-6">
+            {/* Webhook Logs */}
+            <Card className="shadow-sm">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -504,7 +855,9 @@ X-API-KEY: ${apiKey}
               </table>
             </div>
           </CardContent>
-        </Card>
+            </Card>
+          </div>
+        )}
       </div>
     </AppLayout>
   )

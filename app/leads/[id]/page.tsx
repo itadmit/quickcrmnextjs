@@ -27,6 +27,8 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
 import { Invoice4UDialog } from "@/components/dialogs/Invoice4UDialog"
+import { NewQuoteDialog } from "@/components/dialogs/NewQuoteDialog"
+import { EditLeadDialog } from "@/components/dialogs/EditLeadDialog"
 
 interface Lead {
   id: string
@@ -50,9 +52,13 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "budgets" | "files">("overview")
+  const [newQuoteOpen, setNewQuoteOpen] = useState(false)
+  const [editLeadOpen, setEditLeadOpen] = useState(false)
+  const [quotes, setQuotes] = useState<any[]>([])
 
   useEffect(() => {
     fetchLead()
+    fetchQuotes()
   }, [])
 
   const fetchLead = async () => {
@@ -83,6 +89,18 @@ export default function LeadDetailPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchQuotes = async () => {
+    try {
+      const response = await fetch(`/api/quotes?leadId=${params.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        setQuotes(data)
+      }
+    } catch (error) {
+      console.error('Error fetching quotes:', error)
     }
   }
 
@@ -205,7 +223,7 @@ export default function LeadDetailPage() {
                 המר ללקוח
               </Button>
             )}
-            <Button variant="outline" onClick={() => setIsEditing(!isEditing)}>
+            <Button variant="outline" onClick={() => setEditLeadOpen(true)}>
               <Edit className="w-4 h-4 ml-2" />
               ערוך
             </Button>
@@ -378,13 +396,94 @@ export default function LeadDetailPage() {
             {/* Budgets Tab */}
             {activeTab === "budgets" && (
               <Card className="shadow-sm">
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>תקציבים והצעות מחיר</CardTitle>
+                  <Button
+                    onClick={() => setNewQuoteOpen(true)}
+                    size="sm"
+                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                  >
+                    <FileText className="w-4 h-4 ml-2" />
+                    הצעת מחיר חדשה
+                  </Button>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-gray-500 text-center py-8">
-                    אין תקציבים או הצעות מחיר. צור הצעת מחיר חדשה.
-                  </p>
+                  {quotes.length === 0 ? (
+                    <div className="text-center py-8">
+                      <FileText className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-500 mb-4">
+                        אין הצעות מחיר עדיין. צור הצעת מחיר חדשה.
+                      </p>
+                      <Button
+                        onClick={() => setNewQuoteOpen(true)}
+                        variant="outline"
+                      >
+                        <FileText className="w-4 h-4 ml-2" />
+                        צור הצעת מחיר
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {quotes.map((quote) => (
+                        <div
+                          key={quote.id}
+                          className="p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium text-gray-900">
+                                  {quote.quoteNumber}
+                                </span>
+                                <span
+                                  className={`text-xs px-2 py-1 rounded-full ${
+                                    quote.status === "ACCEPTED"
+                                      ? "bg-green-100 text-green-800"
+                                      : quote.status === "REJECTED"
+                                      ? "bg-red-100 text-red-800"
+                                      : quote.status === "SENT" ||
+                                        quote.status === "VIEWED"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : "bg-gray-100 text-gray-800"
+                                  }`}
+                                >
+                                  {quote.status === "DRAFT"
+                                    ? "טיוטה"
+                                    : quote.status === "SENT"
+                                    ? "נשלח"
+                                    : quote.status === "VIEWED"
+                                    ? "נצפה"
+                                    : quote.status === "ACCEPTED"
+                                    ? "אושר"
+                                    : quote.status === "REJECTED"
+                                    ? "נדחה"
+                                    : quote.status}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-600 mb-2">
+                                {quote.title}
+                              </p>
+                              <div className="flex items-center gap-4 text-xs text-gray-500">
+                                <span>
+                                  {new Date(quote.createdAt).toLocaleDateString(
+                                    "he-IL"
+                                  )}
+                                </span>
+                                <span className="font-semibold text-gray-900">
+                                  ₪{quote.total.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                            <Link href={`/quotes`}>
+                              <Button variant="ghost" size="sm">
+                                <ArrowRight className="w-4 h-4" />
+                              </Button>
+                            </Link>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -436,6 +535,15 @@ export default function LeadDetailPage() {
                 <CardTitle>פעולות מהירות</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start" 
+                  size="sm"
+                  onClick={() => setNewQuoteOpen(true)}
+                >
+                  <FileText className="w-4 h-4 ml-2" />
+                  צור הצעת מחיר
+                </Button>
                 <Button variant="outline" className="w-full justify-start" size="sm">
                   <Send className="w-4 h-4 ml-2" />
                   שלח אימייל
@@ -474,6 +582,27 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Dialogs */}
+      {lead && (
+        <>
+          <EditLeadDialog
+            lead={lead}
+            open={editLeadOpen}
+            onOpenChange={setEditLeadOpen}
+            onLeadUpdated={() => {
+              fetchLead()
+              fetchQuotes()
+            }}
+          />
+          <NewQuoteDialog
+            open={newQuoteOpen}
+            onOpenChange={setNewQuoteOpen}
+            onSuccess={fetchQuotes}
+            leadId={lead.id}
+          />
+        </>
+      )}
     </AppLayout>
   )
 }

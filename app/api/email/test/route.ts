@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { sendEmail, verifyEmailConnection } from "@/lib/email"
+import { sendEmail, verifyEmailConnection, getEmailTemplate } from "@/lib/email"
 
 /**
  * Test email sending and verify SMTP connection
@@ -31,17 +31,15 @@ export async function POST(req: NextRequest) {
     await sendEmail({
       to: to || session.user.email || 'quickcrmil@gmail.com',
       subject: subject || 'בדיקת מערכת האימיילים - QuickCRM',
-      html: `
-        <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px;">
+      html: getEmailTemplate({
+        title: 'בדיקת מערכת האימיילים',
+        content: `
           <h2>שלום ${session.user.name}! 👋</h2>
           <p>${message || 'זה אימייל בדיקה ממערכת QuickCRM.'}</p>
           <p>אם קיבלת אימייל זה, המערכת עובדת כראוי! ✅</p>
-          <hr style="margin: 20px 0;">
-          <p style="color: #666; font-size: 12px;">
-            אימייל זה נשלח מ-QuickCRM ב-${new Date().toLocaleString('he-IL')}
-          </p>
-        </div>
-      `,
+        `,
+        footer: `אימייל זה נשלח מ-QuickCRM ב-${new Date().toLocaleString('he-IL')}`,
+      }),
     })
 
     return NextResponse.json({ 

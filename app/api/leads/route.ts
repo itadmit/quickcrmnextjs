@@ -16,6 +16,10 @@ export async function GET(req: NextRequest) {
     const leads = await prisma.lead.findMany({
       where: {
         companyId: session.user.companyId,
+        // לא להציג לידים שהומרו ללקוח (WON)
+        status: {
+          not: "WON",
+        },
       },
       include: {
         owner: {

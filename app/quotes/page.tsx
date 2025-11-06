@@ -21,10 +21,12 @@ import {
   BookOpen,
   CheckSquare,
   Square,
+  MoreVertical,
 } from "lucide-react"
 import { AppLayout } from "@/components/AppLayout"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select,
@@ -33,6 +35,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useToast } from "@/components/ui/use-toast"
 import { NewQuoteDialog } from "@/components/dialogs/NewQuoteDialog"
 import { EditQuoteDialog } from "@/components/dialogs/EditQuoteDialog"
@@ -94,6 +102,7 @@ export default function QuotesPage() {
   const [editQuoteOpen, setEditQuoteOpen] = useState(false)
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null)
   const [filterStatus, setFilterStatus] = useState<string>("all")
+  const [searchTerm, setSearchTerm] = useState("")
   const [pdfLoadingOpen, setPdfLoadingOpen] = useState(false)
   const [previewQuoteId, setPreviewQuoteId] = useState<string | null>(null)
   const [previewQuoteNumber, setPreviewQuoteNumber] = useState<string>("")
@@ -110,9 +119,9 @@ export default function QuotesPage() {
   }, [status, router])
 
   useEffect(() => {
-    // איפוס הבחירה כשמשנים את הפילטר
+    // איפוס הבחירה כשמשנים את הפילטר או החיפוש
     setSelectedQuotes(new Set())
-  }, [filterStatus])
+  }, [filterStatus, searchTerm])
 
   const fetchQuotes = async () => {
     try {
@@ -356,10 +365,27 @@ export default function QuotesPage() {
       .reduce((sum, q) => sum + q.total, 0),
   }
 
-  const filteredQuotes =
-    filterStatus === "all"
-      ? quotes
-      : quotes.filter((q) => q.status === filterStatus)
+  const filteredQuotes = quotes.filter((quote) => {
+    // סינון לפי סטטוס
+    if (filterStatus !== "all" && quote.status !== filterStatus) {
+      return false
+    }
+    
+    // סינון לפי חיפוש
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      return (
+        quote.quoteNumber.toLowerCase().includes(term) ||
+        quote.title.toLowerCase().includes(term) ||
+        quote.lead?.name?.toLowerCase().includes(term) ||
+        quote.lead?.email?.toLowerCase().includes(term) ||
+        quote.lead?.phone?.toLowerCase().includes(term) ||
+        quote.total.toString().includes(term)
+      )
+    }
+    
+    return true
+  })
 
   const isAllSelected = filteredQuotes.length > 0 && selectedQuotes.size === filteredQuotes.length
   const isIndeterminate = selectedQuotes.size > 0 && selectedQuotes.size < filteredQuotes.length
@@ -453,114 +479,128 @@ export default function QuotesPage() {
           </Card>
         </div>
 
-        {/* Filter and Selection */}
-        <div className="flex items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            <Filter className="w-5 h-5 text-gray-600" />
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">כל ההצעות</SelectItem>
-                <SelectItem value="DRAFT">טיוטות</SelectItem>
-                <SelectItem value="SENT">נשלחו</SelectItem>
-                <SelectItem value="VIEWED">נצפו</SelectItem>
-                <SelectItem value="ACCEPTED">אושרו</SelectItem>
-                <SelectItem value="REJECTED">נדחו</SelectItem>
-                <SelectItem value="EXPIRED">פג תוקף</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {selectedQuotes.size > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">
-                נבחרו {selectedQuotes.size} הצעות
-              </span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleDeleteSelected}
-                className="gap-2"
-              >
-                <Trash2 className="w-4 h-4" />
-                מחק נבחרים
+        {/* Search and Filters */}
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="flex gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="חיפוש לפי מספר הצעה, כותרת, לקוח, סכום..."
+                  className="pr-10"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">כל ההצעות</SelectItem>
+                  <SelectItem value="DRAFT">טיוטות</SelectItem>
+                  <SelectItem value="SENT">נשלחו</SelectItem>
+                  <SelectItem value="VIEWED">נצפו</SelectItem>
+                  <SelectItem value="ACCEPTED">אושרו</SelectItem>
+                  <SelectItem value="REJECTED">נדחו</SelectItem>
+                  <SelectItem value="EXPIRED">פג תוקף</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline">
+                <Filter className="w-4 h-4 ml-2" />
+                סינון
               </Button>
             </div>
-          )}
-        </div>
+          </CardContent>
+        </Card>
+
+        {/* Selection Actions */}
+        {selectedQuotes.size > 0 && (
+          <div className="flex items-center justify-end gap-2 mb-6">
+            <span className="text-sm text-gray-600">
+              נבחרו {selectedQuotes.size} הצעות
+            </span>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDeleteSelected}
+              className="gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              מחק נבחרים
+            </Button>
+          </div>
+        )}
 
         {/* Quotes Table */}
         <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-hidden">
-              <table className="w-full table-fixed" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                      <button
-                        onClick={() => handleSelectAll(!isAllSelected)}
-                        className="flex items-center justify-center"
-                        title={isAllSelected ? "בטל בחירה" : "בחר הכל"}
-                      >
-                        {isAllSelected ? (
-                          <CheckSquare className="w-5 h-5 text-purple-600" />
-                        ) : isIndeterminate ? (
-                          <div className="w-5 h-5 border-2 border-purple-600 rounded bg-purple-600/20" />
-                        ) : (
-                          <Square className="w-5 h-5 text-gray-400" />
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                      מספר הצעה
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      כותרת
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
-                      לקוח
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
-                      סכום
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                      סטטוס
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                      תאריך יצירה
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
-                      פעולות
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredQuotes.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center">
-                        <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-500">אין הצעות מחיר להצגה</p>
-                        <Button
-                          onClick={() => setNewQuoteOpen(true)}
-                          variant="outline"
-                          className="mt-4"
+          <CardContent className="pt-6">
+            {filteredQuotes.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  {searchTerm || filterStatus !== "all" ? "לא נמצאו הצעות מחיר" : "אין הצעות מחיר להצגה"}
+                </h3>
+                <p className="text-gray-500 mb-4">
+                  {searchTerm || filterStatus !== "all"
+                    ? "נסה לחפש במונח אחר או שנה את הפילטר"
+                    : "התחל על ידי יצירת הצעת מחיר חדשה"}
+                </p>
+                {!searchTerm && filterStatus === "all" && (
+                  <Button
+                    onClick={() => setNewQuoteOpen(true)}
+                    variant="outline"
+                  >
+                    <Plus className="w-4 h-4 ml-2" />
+                    צור הצעת מחיר ראשונה
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-right py-3 px-4 font-medium text-gray-700 w-12">
+                        <button
+                          onClick={() => handleSelectAll(!isAllSelected)}
+                          className="flex items-center justify-center"
+                          title={isAllSelected ? "בטל בחירה" : "בחר הכל"}
                         >
-                          <Plus className="w-4 h-4 ml-2" />
-                          צור הצעת מחיר ראשונה
-                        </Button>
-                      </td>
+                          {isAllSelected ? (
+                            <CheckSquare className="w-5 h-5 text-purple-600" />
+                          ) : isIndeterminate ? (
+                            <div className="w-5 h-5 border-2 border-purple-600 rounded bg-purple-600/20" />
+                          ) : (
+                            <Square className="w-5 h-5 text-gray-400" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700 w-32">מספר הצעה</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700">כותרת</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700">לקוח</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700">סכום</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700">סטטוס</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700">תאריך יצירה</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-700">פעולות</th>
                     </tr>
-                  ) : (
-                    filteredQuotes.map((quote) => {
+                  </thead>
+                  <tbody>
+                    {filteredQuotes.map((quote) => {
                       const statusInfo = statusConfig[quote.status]
                       const StatusIcon = statusInfo.icon
                       const isSelected = selectedQuotes.has(quote.id)
                       return (
-                        <tr key={quote.id} className={`hover:bg-gray-50 ${isSelected ? 'bg-purple-50' : ''}`}>
-                          <td className="px-6 py-4">
+                        <tr 
+                          key={quote.id} 
+                          className={`border-b hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-purple-50' : ''}`}
+                        >
+                          <td className="py-3 px-4">
                             <button
-                              onClick={() => handleSelectQuote(quote.id, !isSelected)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleSelectQuote(quote.id, !isSelected)
+                              }}
                               className="flex items-center justify-center"
                               title={isSelected ? "בטל בחירה" : "בחר"}
                             >
@@ -571,32 +611,27 @@ export default function QuotesPage() {
                               )}
                             </button>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center break-words">
-                              <FileText className="w-4 h-4 text-gray-400 ml-2 flex-shrink-0" />
-                              <span className="font-medium text-gray-900 break-words">
+                          <td className="py-3 px-4 w-32">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <span className="font-normal text-gray-900 truncate">
                                 {quote.quoteNumber}
                               </span>
                             </div>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm font-medium text-gray-900 break-words">
+                          <td className="py-3 px-4">
+                            <div className="font-normal text-gray-900">
                               {quote.title}
                             </div>
-                            {quote.description && (
-                              <div className="text-sm text-gray-500 break-words line-clamp-2">
-                                {quote.description}
-                              </div>
-                            )}
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="py-3 px-4">
                             {quote.lead ? (
                               <div>
-                                <div className="text-sm font-medium text-gray-900 break-words">
+                                <div className="font-normal text-gray-900">
                                   {quote.lead.name}
                                 </div>
                                 {quote.lead.email && (
-                                  <div className="text-sm text-gray-500 break-all">
+                                  <div className="text-sm text-gray-600 font-light">
                                     {quote.lead.email}
                                   </div>
                                 )}
@@ -605,33 +640,36 @@ export default function QuotesPage() {
                               <span className="text-gray-400">-</span>
                             )}
                           </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm font-bold text-gray-900">
+                          <td className="py-3 px-4">
+                            <span className="font-medium text-gray-900">
                               ₪{quote.total.toLocaleString()}
                             </span>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="py-3 px-4">
                             <Select
                               value={quote.status}
                               onValueChange={(value) =>
                                 handleStatusChange(quote.id, value)
                               }
                             >
-                              <SelectTrigger className="w-[130px] border-0">
+                              <SelectTrigger 
+                                className="w-auto h-auto py-1 px-2 border-0 bg-transparent shadow-none hover:bg-transparent focus:ring-0 inline-flex items-center gap-1.5 [&>svg]:ml-0"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <Badge
-                                  className={`${statusInfo.color} text-white`}
+                                  className={`${statusInfo.color} text-white px-3 py-1.5 flex items-center gap-1.5 min-w-fit`}
                                 >
-                                  <StatusIcon className="w-3 h-3 ml-1" />
+                                  <StatusIcon className="w-3 h-3" />
                                   {statusInfo.label}
                                 </Badge>
                               </SelectTrigger>
-                              <SelectContent>
+                              <SelectContent dir="rtl">
                                 {Object.entries(statusConfig).map(
                                   ([key, config]) => (
                                     <SelectItem key={key} value={key}>
-                                      <div className="flex items-center">
-                                        <config.icon className="w-3 h-3 ml-2" />
-                                        {config.label}
+                                      <div className="flex items-center justify-end gap-2 w-full">
+                                        <span className="text-right">{config.label}</span>
+                                        <config.icon className="w-3 h-3 flex-shrink-0" />
                                       </div>
                                     </SelectItem>
                                   )
@@ -639,73 +677,83 @@ export default function QuotesPage() {
                               </SelectContent>
                             </Select>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">
+                          <td className="py-3 px-4 text-gray-600 font-normal">
                             {new Date(quote.createdAt).toLocaleDateString(
                               "he-IL"
                             )}
                           </td>
-                          <td className="px-6 py-4 text-sm">
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() =>
-                                  handlePreviewPDF(
-                                    quote.id,
-                                    quote.quoteNumber
-                                  )
-                                }
-                                title="תצוגה מקדימה"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() =>
-                                  handleDownloadPDF(
-                                    quote.id,
-                                    quote.quoteNumber
-                                  )
-                                }
-                                title="הורד PDF"
-                              >
-                                <Download className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDuplicate(quote)}
-                                title="שכפל"
-                              >
-                                <Copy className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleEdit(quote)}
-                                title="ערוך"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDelete(quote.id)}
-                                title="מחק"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
+                          <td className="py-3 px-4">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" dir="rtl">
+                                <DropdownMenuItem 
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handlePreviewPDF(quote.id, quote.quoteNumber)
+                                  }}
+                                  className="flex items-center gap-2"
+                                >
+                                  <Eye className="w-4 h-4 flex-shrink-0" />
+                                  <span>תצוגה מקדימה</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDownloadPDF(quote.id, quote.quoteNumber)
+                                  }}
+                                  className="flex items-center gap-2"
+                                >
+                                  <Download className="w-4 h-4 flex-shrink-0" />
+                                  <span>הורד PDF</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDuplicate(quote)
+                                  }}
+                                  className="flex items-center gap-2"
+                                >
+                                  <Copy className="w-4 h-4 flex-shrink-0" />
+                                  <span>שכפל</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleEdit(quote)
+                                  }}
+                                  className="flex items-center gap-2"
+                                >
+                                  <Edit className="w-4 h-4 flex-shrink-0" />
+                                  <span>ערוך</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-red-600 flex items-center gap-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDelete(quote.id)
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4 flex-shrink-0" />
+                                  <span>מחק</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </td>
                         </tr>
                       )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
 

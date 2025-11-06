@@ -93,12 +93,23 @@ export async function GET(
             status: true,
             priority: true,
             dueDate: true,
+            position: true,
             project: {
               select: {
                 name: true,
               },
             },
+            assignee: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
+          orderBy: [
+            { position: "asc" },
+            { createdAt: "desc" },
+          ],
         },
       },
     })

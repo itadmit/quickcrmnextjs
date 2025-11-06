@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { AppLayout } from "@/components/AppLayout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,14 +15,21 @@ import {
   Bell,
   Shield,
   Mail,
-  CheckCircle
+  CheckCircle,
+  Users,
+  Lock,
+  Unlock,
+  Edit,
+  Key
 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import Link from "next/link"
 
 export default function SettingsPage() {
   const { toast } = useToast()
   const { data: session } = useSession()
-  const [activeTab, setActiveTab] = useState<"general" | "email" | "notifications" | "security" | "advanced">("general")
+  const [activeTab, setActiveTab] = useState<"general" | "communication" | "security" | "advanced">("general")
   const [isResetting, setIsResetting] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [isSeeding, setIsSeeding] = useState(false)
@@ -145,7 +152,206 @@ export default function SettingsPage() {
     }
   }
 
-  const isAdmin = session?.user?.role === 'ADMIN'
+  const isAdmin = session?.user?.role === 'ADMIN' || session?.user?.role === 'SUPER_ADMIN'
+  const [users, setUsers] = useState<any[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const [userPermissions, setUserPermissions] = useState<Record<string, Record<string, boolean>>>({})
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null)
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  const sidebarPermissions = [
+    { key: "tasks", label: "משימות", required: false },
+    { key: "calendar", label: "לוח שנה", required: false },
+    { key: "reports", label: "דוחות", required: false },
+    { key: "leads", label: "לידים", required: false },
+    { key: "clients", label: "לקוחות", required: false },
+    { key: "projects", label: "פרויקטים", required: false },
+    { key: "quotes", label: "הצעות מחיר", required: false },
+    { key: "payments", label: "תשלומים", required: false },
+    { key: "settings", label: "הגדרות", required: false },
+    { key: "integrations", label: "אינטגרציות", required: false },
+    { key: "automations", label: "אוטומציות", required: false },
+  ]
+
+  useEffect(() => {
+    if (activeTab === "security" && isAdmin) {
+      fetchUsers()
+    }
+  }, [activeTab, isAdmin])
+
+  const fetchUsers = async () => {
+    setLoadingUsers(true)
+    try {
+      const response = await fetch('/api/users')
+      if (response.ok) {
+        const usersData = await response.json()
+        setUsers(usersData)
+        
+        // טעינת הרשאות לכל משתמש
+        const permissionsPromises = usersData.map((user: any) => 
+          fetch(`/api/users/permissions/${user.id}`).then(r => r.json())
+        )
+        const permissionsResults = await Promise.all(permissionsPromises)
+        
+        const permissionsMap: Record<string, Record<string, boolean>> = {}
+        usersData.forEach((user: any, index: number) => {
+          permissionsMap[user.id] = permissionsResults[index]?.permissions || {}
+        })
+        setUserPermissions(permissionsMap)
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error)
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
+
+  const handleTogglePermission = async (userId: string, permission: string, currentValue: boolean) => {
+    // לא ניתן לשנות הרשאות נדרשות
+    if (permission === "dashboard" || permission === "notifications") {
+      return
+    }
+
+    const newPermissions = {
+      ...userPermissions[userId],
+      [permission]: !currentValue,
+    }
+
+    try {
+      const response = await fetch(`/api/users/permissions/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissions: newPermissions }),
+      })
+
+      if (response.ok) {
+        setUserPermissions({
+          ...userPermissions,
+          [userId]: newPermissions,
+        })
+        toast({
+          title: "הצלחה",
+          description: "ההרשאות עודכנו בהצלחה",
+        })
+      } else {
+        throw new Error('Failed to update permissions')
+      }
+    } catch (error) {
+      console.error('Error updating permissions:', error)
+      toast({
+        title: "שגיאה",
+        description: "לא ניתן היה לעדכן את ההרשאות",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    if (!confirm(`האם אתה בטוח שברצונך למחוק את המשתמש ${userName}? פעולה זו בלתי הפיכה!`)) {
+      return
+    }
+
+    setDeletingUserId(userId)
+    try {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        toast({
+          title: "הצלחה",
+          description: "המשתמש נמחק בהצלחה",
+        })
+        // רענון רשימת המשתמשים
+        await fetchUsers()
+      } else {
+        const error = await response.json()
+        toast({
+          title: "שגיאה",
+          description: error.error || "לא ניתן היה למחוק את המשתמש",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error)
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה במחיקת המשתמש",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingUserId(null)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      toast({
+        title: "שגיאה",
+        description: "יש למלא את כל השדות",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (passwordData.newPassword.length < 8) {
+      toast({
+        title: "שגיאה",
+        description: "הסיסמה החדשה חייבת להכיל לפחות 8 תווים",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast({
+        title: "שגיאה",
+        description: "הסיסמאות החדשות לא תואמות",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setChangingPassword(true)
+    try {
+      const response = await fetch('/api/users/change-password', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
+      })
+
+      if (response.ok) {
+        toast({
+          title: "הצלחה",
+          description: "הסיסמה שונתה בהצלחה",
+        })
+        setShowChangePassword(false)
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
+      } else {
+        const error = await response.json()
+        toast({
+          title: "שגיאה",
+          description: error.error || "לא ניתן היה לשנות את הסיסמה",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error changing password:', error)
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה בשינוי הסיסמה",
+        variant: "destructive",
+      })
+    } finally {
+      setChangingPassword(false)
+    }
+  }
 
   return (
     <AppLayout>
@@ -160,24 +366,27 @@ export default function SettingsPage() {
         <div className="border-b border-gray-200">
           <div className="flex gap-6">
             {[
-              { key: "general", label: "כללי" },
-              { key: "email", label: "אימייל" },
-              { key: "notifications", label: "התראות" },
-              { key: "security", label: "אבטחה" },
-              ...(isAdmin ? [{ key: "advanced", label: "מתקדם" }] : []),
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as any)}
-                className={`pb-3 border-b-2 transition-colors ${
-                  activeTab === tab.key
-                    ? "border-purple-600 text-purple-600 font-medium"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+              { key: "general", label: "כללי", icon: SettingsIcon },
+              { key: "communication", label: "תקשורת", icon: Mail },
+              { key: "security", label: "אבטחה", icon: Shield },
+              ...(isAdmin ? [{ key: "advanced", label: "מתקדם", icon: Database }] : []),
+            ].map((tab) => {
+              const Icon = tab.icon
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key as any)}
+                  className={`flex items-center gap-2 pb-3 border-b-2 transition-colors ${
+                    activeTab === tab.key
+                      ? "border-purple-600 text-purple-600 font-medium"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -247,125 +456,369 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Email Tab */}
-        {activeTab === "email" && (
+        {/* Communication Tab - Email + Notifications */}
+        {activeTab === "communication" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Email Configuration */}
-          <Card className="shadow-sm">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <Mail className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <CardTitle>הגדרות אימייל</CardTitle>
-                  <CardDescription>בדיקת חיבור ושליחת אימייל מבחן</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">SMTP Server</span>
-                    <span className="text-sm text-gray-600">smtp.gmail.com</span>
+            {/* Email Configuration */}
+            <Card className="shadow-sm">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <Mail className="w-5 h-5 text-blue-600" />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">משתמש</span>
-                    <span className="text-sm text-gray-600">quickcrmil@gmail.com</span>
+                  <div>
+                    <CardTitle>הגדרות אימייל</CardTitle>
+                    <CardDescription>בדיקת חיבור ושליחת אימייל מבחן</CardDescription>
                   </div>
-                  {emailStatus && (
-                    <div className="flex items-center gap-2 mt-2">
-                      {emailStatus.connected ? (
-                        <>
-                          <CheckCircle className="w-4 h-4 text-green-600" />
-                          <span className="text-sm text-green-600">החיבור תקין ✅</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertTriangle className="w-4 h-4 text-red-600" />
-                          <span className="text-sm text-red-600">בעיה בחיבור ❌</span>
-                        </>
-                      )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">SMTP Server</span>
+                      <span className="text-sm text-gray-600">smtp.gmail.com</span>
                     </div>
-                  )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">משתמש</span>
+                      <span className="text-sm text-gray-600">quickcrmil@gmail.com</span>
+                    </div>
+                    {emailStatus && (
+                      <div className="flex items-center gap-2 mt-2">
+                        {emailStatus.connected ? (
+                          <>
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            <span className="text-sm text-green-600">החיבור תקין ✅</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="w-4 h-4 text-red-600" />
+                            <span className="text-sm text-red-600">בעיה בחיבור ❌</span>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <Button 
+                    onClick={handleTestEmail}
+                    disabled={isTestingEmail}
+                    className="w-full prodify-gradient text-white"
+                  >
+                    {isTestingEmail ? "שולח אימייל..." : "שלח אימייל בדיקה"}
+                  </Button>
                 </div>
-                <Button 
-                  onClick={handleTestEmail}
-                  disabled={isTestingEmail}
-                  className="w-full prodify-gradient text-white"
-                >
-                  {isTestingEmail ? "שולח אימייל..." : "שלח אימייל בדיקה"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          </div>
-        )}
+              </CardContent>
+            </Card>
 
-        {/* Notifications Tab */}
-        {activeTab === "notifications" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Notifications */}
-          <Card className="shadow-sm">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                  <Bell className="w-5 h-5 text-purple-600" />
+            {/* Notifications */}
+            <Card className="shadow-sm">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                    <Bell className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <CardTitle>התראות</CardTitle>
+                    <CardDescription>הגדר העדפות התראות</CardDescription>
+                  </div>
                 </div>
-                <div>
-                  <CardTitle>התראות</CardTitle>
-                  <CardDescription>הגדר העדפות התראות</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">התראות אימייל</span>
+                    <Button variant="outline" size="sm" disabled>מופעל</Button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">התראות דחיפות</span>
+                    <Button variant="outline" size="sm" disabled>מופעל</Button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">סיכומים שבועיים</span>
+                    <Button variant="outline" size="sm" disabled>מופעל</Button>
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">התראות אימייל</span>
-                  <Button variant="outline" size="sm" disabled>מופעל</Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">התראות דחיפות</span>
-                  <Button variant="outline" size="sm" disabled>מופעל</Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">סיכומים שבועיים</span>
-                  <Button variant="outline" size="sm" disabled>מופעל</Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
           </div>
         )}
 
         {/* Security Tab */}
         {activeTab === "security" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Security */}
-          <Card className="shadow-sm">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                  <Shield className="w-5 h-5 text-orange-600" />
+          <div className="space-y-6">
+            {/* Security Settings */}
+            <Card className="shadow-sm">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+                    <Shield className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <CardTitle>אבטחה</CardTitle>
+                    <CardDescription>הגדרות אבטחה וסיסמה</CardDescription>
+                  </div>
                 </div>
-                <div>
-                  <CardTitle>אבטחה</CardTitle>
-                  <CardDescription>הגדרות אבטחה וסיסמה</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {/* Change Password */}
+                  <div className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <Key className="w-5 h-5 text-gray-600" />
+                        <div>
+                          <h3 className="font-medium text-gray-900">שינוי סיסמה</h3>
+                          <p className="text-sm text-gray-500">עדכן את סיסמת החשבון שלך</p>
+                        </div>
+                      </div>
+                      {!showChangePassword && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowChangePassword(true)}
+                        >
+                          שנה סיסמה
+                        </Button>
+                      )}
+                    </div>
+                    {showChangePassword && (
+                      <div className="space-y-4 mt-4">
+                        <div>
+                          <Label htmlFor="currentPassword">סיסמה נוכחית</Label>
+                          <Input
+                            id="currentPassword"
+                            type="password"
+                            value={passwordData.currentPassword}
+                            onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                            className="mt-1"
+                            placeholder="הכנס סיסמה נוכחית"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="newPassword">סיסמה חדשה</Label>
+                          <Input
+                            id="newPassword"
+                            type="password"
+                            value={passwordData.newPassword}
+                            onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                            className="mt-1"
+                            placeholder="סיסמה חדשה (מינימום 8 תווים)"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="confirmPassword">אישור סיסמה</Label>
+                          <Input
+                            id="confirmPassword"
+                            type="password"
+                            value={passwordData.confirmPassword}
+                            onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                            className="mt-1"
+                            placeholder="הכנס שוב את הסיסמה החדשה"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={handleChangePassword}
+                            disabled={changingPassword}
+                            className="prodify-gradient text-white"
+                          >
+                            {changingPassword ? "משנה..." : "שמור סיסמה"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowChangePassword(false)
+                              setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
+                            }}
+                            disabled={changingPassword}
+                          >
+                            ביטול
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Two Factor Authentication */}
+                  <div className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Shield className="w-5 h-5 text-gray-600" />
+                        <div>
+                          <h3 className="font-medium text-gray-900">אימות דו-שלבי</h3>
+                          <p className="text-sm text-gray-500">הוסף שכבת אבטחה נוספת לחשבון שלך</p>
+                        </div>
+                      </div>
+                      <Button variant="outline" size="sm" disabled>
+                        בקרוב
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <Button variant="outline" className="w-full" disabled>
-                  שנה סיסמה (בקרוב)
-                </Button>
-                <Button variant="outline" className="w-full" disabled>
-                  אימות דו-שלבי (בקרוב)
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* User Permissions Management - Only for Admins */}
+            {isAdmin && (
+              <Card className="shadow-sm">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                      <Users className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <CardTitle>ניהול הרשאות משתמשים</CardTitle>
+                      <CardDescription>נהל את ההרשאות של משתמשי החברה</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {loadingUsers ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+                      <p className="mt-2 text-gray-600">טוען משתמשים...</p>
+                    </div>
+                  ) : users.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      אין משתמשים
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {users.map((user) => {
+                        const isAdminUser = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+                        const isEditing = editingUserId === user.id
+                        const permissions = userPermissions[user.id] || {}
+
+                        return (
+                          <div key={user.id} className="border rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                                  <User className="w-5 h-5 text-purple-600" />
+                                </div>
+                                <div>
+                                  <h3 className="font-medium text-gray-900">{user.name}</h3>
+                                  <p className="text-sm text-gray-500">{user.email}</p>
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    {user.role === 'ADMIN' ? 'מנהל' : 
+                                     user.role === 'SUPER_ADMIN' ? 'מנהל ראשי' :
+                                     user.role === 'MANAGER' ? 'מנהל צוות' : 'משתמש'}
+                                  </p>
+                                </div>
+                              </div>
+                              {!isAdminUser && (
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setEditingUserId(isEditing ? null : user.id)}
+                                  >
+                                    {isEditing ? (
+                                      <>
+                                        <CheckCircle className="w-4 h-4 ml-2" />
+                                        סיים עריכה
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Edit className="w-4 h-4 ml-2" />
+                                        ערוך הרשאות
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => handleDeleteUser(user.id, user.name)}
+                                    disabled={deletingUserId === user.id}
+                                  >
+                                    {deletingUserId === user.id ? (
+                                      <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600 ml-2"></div>
+                                        מוחק...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Trash2 className="w-4 h-4 ml-2" />
+                                        מחק
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {isAdminUser ? (
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <p className="text-sm text-blue-900">
+                                  למשתמשים מנהלים יש גישה מלאה לכל ההרשאות
+                                </p>
+                              </div>
+                            ) : isEditing ? (
+                              <div className="space-y-3">
+                                <div className="border rounded-lg p-4 space-y-3 max-h-[400px] overflow-y-auto">
+                                  {sidebarPermissions.map((perm) => {
+                                    const hasPermission = permissions[perm.key] === true
+                                    return (
+                                      <div
+                                        key={perm.key}
+                                        className="flex items-center gap-3"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          id={`perm-${user.id}-${perm.key}`}
+                                          checked={hasPermission}
+                                          onChange={() => handleTogglePermission(user.id, perm.key, hasPermission)}
+                                          className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                        />
+                                        <label
+                                          htmlFor={`perm-${user.id}-${perm.key}`}
+                                          className="text-sm flex-1 cursor-pointer"
+                                        >
+                                          {perm.label}
+                                        </label>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                                <div className="bg-gray-50 border rounded-lg p-3">
+                                  <p className="text-xs text-gray-600">
+                                    <strong>הערה:</strong> הרשאות "בית" ו"התראות" תמיד פעילות ולא ניתן לשנותן
+                                  </p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                {sidebarPermissions.map((perm) => {
+                                  const hasPermission = permissions[perm.key] === true
+                                  return (
+                                    <div
+                                      key={perm.key}
+                                      className={`flex items-center gap-2 text-sm px-2 py-1 rounded ${
+                                        hasPermission
+                                          ? 'bg-green-50 text-green-700'
+                                          : 'bg-gray-50 text-gray-500'
+                                      }`}
+                                    >
+                                      {hasPermission ? (
+                                        <Unlock className="w-3 h-3" />
+                                      ) : (
+                                        <Lock className="w-3 h-3" />
+                                      )}
+                                      <span>{perm.label}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 

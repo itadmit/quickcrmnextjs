@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
       include: {
         assignee: {
           select: {
+            id: true,
             name: true,
             email: true,
           },
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { title, description, projectId, clientId, leadId, dueDate, priority, status } = body
+    const { title, description, projectId, clientId, leadId, dueDate, priority, status, skipEmail } = body
 
     const task = await prisma.task.create({
       data: {
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
       include: {
         assignee: {
           select: {
+            id: true,
             name: true,
             email: true,
           },
@@ -85,15 +87,31 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Send notification (in-app + email)
-    await notifyTaskAssigned({
-      userId: task.assigneeId || session.user.id,
-      companyId: session.user.companyId,
-      taskId: task.id,
-      taskTitle: task.title,
-      assigneeName: task.assignee?.name || session.user.name || 'Unknown',
-      dueDate: task.dueDate ? new Date(task.dueDate).toLocaleDateString('he-IL') : undefined,
-    })
+    // Send notification (in-app + email) - רק אם לא מדלגים על מייל
+    if (!skipEmail) {
+      await notifyTaskAssigned({
+        userId: task.assigneeId || session.user.id,
+        companyId: session.user.companyId,
+        taskId: task.id,
+        taskTitle: task.title,
+        assigneeName: task.assignee?.name || session.user.name || 'Unknown',
+        dueDate: task.dueDate ? new Date(task.dueDate).toLocaleDateString('he-IL') : undefined,
+      })
+    } else {
+      // רק התראה בתוך המערכת, ללא מייל
+      await prisma.notification.create({
+        data: {
+          userId: task.assigneeId || session.user.id,
+          companyId: session.user.companyId,
+          type: 'task',
+          title: 'משימה חדשה',
+          message: task.title,
+          entityType: 'task',
+          entityId: task.id,
+          isRead: false,
+        },
+      })
+    }
 
     // Trigger automation for task creation
     await triggerAutomation(
@@ -121,12 +139,30 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { id, status, ...updateData } = body
+    const { id, status, assigneeId, ...updateData } = body
 
-    // Get old task data to check for status changes
+    // Get old task data to check for status and assignee changes
     const oldTask = await prisma.task.findUnique({
       where: { id },
+      include: {
+        assignee: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     })
+
+    if (!oldTask) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    }
+
+    // בדיקה שהמשימה שייכת לחברה
+    if (oldTask.companyId !== session.user.companyId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    }
 
     const task = await prisma.task.update({
       where: {
@@ -136,10 +172,12 @@ export async function PATCH(req: NextRequest) {
       data: {
         ...updateData,
         ...(status && { status }),
+        ...(assigneeId !== undefined && { assigneeId }),
       },
       include: {
         assignee: {
           select: {
+            id: true,
             name: true,
             email: true,
           },
@@ -152,8 +190,35 @@ export async function PATCH(req: NextRequest) {
       },
     })
 
+    // אם המשימה הועברה למישהו אחר - שלח מייל
+    if (assigneeId !== undefined && assigneeId !== oldTask.assigneeId && assigneeId) {
+      // בדיקה שהמשתמש החדש שייך לחברה
+      const newAssignee = await prisma.user.findFirst({
+        where: {
+          id: assigneeId,
+          companyId: session.user.companyId,
+        },
+        select: {
+          name: true,
+          email: true,
+        },
+      })
+
+      if (newAssignee) {
+        // שלח מייל למקבל המשימה החדש
+        await notifyTaskAssigned({
+          userId: assigneeId,
+          companyId: session.user.companyId,
+          taskId: task.id,
+          taskTitle: task.title,
+          assigneeName: newAssignee.name,
+          dueDate: task.dueDate ? new Date(task.dueDate).toLocaleDateString('he-IL') : undefined,
+        })
+      }
+    }
+
     // Trigger automation and notification if task was completed
-    if (status && oldTask && oldTask.status !== 'DONE' && status === 'DONE') {
+    if (status && oldTask.status !== 'DONE' && status === 'DONE') {
       // Send notification
       await notifyTaskCompleted({
         userId: task.assigneeId || session.user.id,

@@ -4,9 +4,11 @@ import { useEffect, useState } from "react"
 import { AppLayout } from "@/components/AppLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, CheckSquare, Clock, AlertCircle, CheckCircle2, Circle, CalendarDays, FolderKanban } from "lucide-react"
+import { Plus, CheckSquare, Clock, AlertCircle, CheckCircle2, Circle, CalendarDays, FolderKanban, Trash2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { NewTaskDialog } from "@/components/dialogs/NewTaskDialog"
+import { EditTaskTemplatesDialog } from "@/components/dialogs/EditTaskTemplatesDialog"
+import { AssignTaskDialog } from "@/components/dialogs/AssignTaskDialog"
 import { CardSkeleton } from "@/components/skeletons/CardSkeleton"
 
 interface Task {
@@ -16,7 +18,7 @@ interface Task {
   status: string
   priority: string
   dueDate: string | null
-  assignee: { name: string } | null
+  assignee: { id: string; name: string } | null
   project: { name: string } | null
 }
 
@@ -87,6 +89,39 @@ export default function MyTasksPage() {
     }
   }
 
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('האם אתה בטוח שברצונך למחוק את המשימה?')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        toast({
+          title: "משימה נמחקה",
+          description: "המשימה נמחקה בהצלחה",
+        })
+        fetchTasks()
+      } else {
+        toast({
+          title: "שגיאה",
+          description: "לא ניתן למחוק את המשימה",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error)
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה במחיקת המשימה",
+        variant: "destructive",
+      })
+    }
+  }
+
   const priorityConfig: Record<string, { label: string; color: string; icon: any; bg: string }> = {
     URGENT: { label: "דחוף מאוד", color: "text-red-700", icon: AlertCircle, bg: "bg-red-50 border-red-200" },
     HIGH: { label: "גבוהה", color: "text-orange-700", icon: AlertCircle, bg: "bg-orange-50 border-orange-200" },
@@ -127,7 +162,10 @@ export default function MyTasksPage() {
             <h1 className="text-3xl font-bold text-gray-900">המשימות שלי</h1>
             <p className="text-gray-500 mt-1">ניהול המשימות האישיות שלך</p>
           </div>
-          <NewTaskDialog onTaskCreated={fetchTasks} />
+          <div className="flex gap-2">
+            <EditTaskTemplatesDialog />
+            <NewTaskDialog onTaskCreated={fetchTasks} />
+          </div>
         </div>
 
         {tasks.length === 0 ? (
@@ -159,8 +197,18 @@ export default function MyTasksPage() {
                     return (
                       <div 
                         key={task.id} 
-                        className={`p-4 bg-white border-2 ${priority.bg} rounded-xl hover:shadow-lg transition-all duration-200 cursor-pointer group`}
+                        className={`p-4 bg-white border-2 ${priority.bg} rounded-xl hover:shadow-lg transition-all duration-200 cursor-pointer group relative`}
                       >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteTask(task.id)
+                          }}
+                          className="absolute top-2 left-2 p-1.5 rounded-lg bg-red-50 border-2 border-red-200 hover:bg-red-100 hover:border-red-300 transition-colors flex items-center justify-center text-red-600 opacity-0 group-hover:opacity-100"
+                          title="מחק משימה"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                         <div className="flex items-start gap-3">
                           <button
                             onClick={() => handleTaskStatusChange(task.id, 'DONE')}
@@ -191,6 +239,15 @@ export default function MyTasksPage() {
                                 </div>
                               )}
                             </div>
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <AssignTaskDialog
+                                taskId={task.id}
+                                taskTitle={task.title}
+                                currentAssigneeId={task.assignee?.id || null}
+                                currentAssigneeName={task.assignee?.name || null}
+                                onTaskAssigned={fetchTasks}
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -220,8 +277,18 @@ export default function MyTasksPage() {
                     return (
                       <div 
                         key={task.id} 
-                        className={`p-4 bg-white border-2 ${priority.bg} rounded-xl hover:shadow-lg transition-all duration-200 cursor-pointer group`}
+                        className={`p-4 bg-white border-2 ${priority.bg} rounded-xl hover:shadow-lg transition-all duration-200 cursor-pointer group relative`}
                       >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteTask(task.id)
+                          }}
+                          className="absolute top-2 left-2 p-1.5 rounded-lg bg-red-50 border-2 border-red-200 hover:bg-red-100 hover:border-red-300 transition-colors flex items-center justify-center text-red-600 opacity-0 group-hover:opacity-100"
+                          title="מחק משימה"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                         <div className="flex items-start gap-3">
                           <button
                             onClick={() => handleTaskStatusChange(task.id, 'IN_PROGRESS')}
@@ -249,6 +316,15 @@ export default function MyTasksPage() {
                                   {task.project.name}
                                 </div>
                               )}
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <AssignTaskDialog
+                                taskId={task.id}
+                                taskTitle={task.title}
+                                currentAssigneeId={task.assignee?.id || null}
+                                currentAssigneeName={task.assignee?.name || null}
+                                onTaskAssigned={fetchTasks}
+                              />
                             </div>
                           </div>
                         </div>
@@ -283,10 +359,11 @@ export default function MyTasksPage() {
                       >
                         <div className="flex items-start gap-3">
                           <button
-                            onClick={() => handleTaskStatusChange(task.id, 'IN_PROGRESS')}
-                            className="mt-0.5 w-5 h-5 rounded-full bg-green-500 border-2 border-green-500 hover:bg-green-600 transition-colors flex items-center justify-center"
+                            onClick={() => handleDeleteTask(task.id)}
+                            className="mt-0.5 p-2 rounded-lg bg-red-50 border-2 border-red-200 hover:bg-red-100 hover:border-red-300 transition-colors flex items-center justify-center text-red-600"
+                            title="מחק משימה"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                           <div className="flex-1 min-w-0">
                             <h4 className="font-semibold text-gray-500 mb-2 line-through leading-tight">{task.title}</h4>
@@ -310,6 +387,15 @@ export default function MyTasksPage() {
                                   {task.project.name}
                                 </div>
                               )}
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <AssignTaskDialog
+                                taskId={task.id}
+                                taskTitle={task.title}
+                                currentAssigneeId={task.assignee?.id || null}
+                                currentAssigneeName={task.assignee?.name || null}
+                                onTaskAssigned={fetchTasks}
+                              />
                             </div>
                           </div>
                         </div>

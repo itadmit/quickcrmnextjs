@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
             id: true,
             quoteNumber: true,
             title: true,
+            total: true,
           },
         },
       },
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest) {
     const {
       projectId,
       quoteId,
+      clientId,
       amount,
       currency = "ILS",
       method = "CREDIT_CARD",
@@ -137,6 +139,7 @@ export async function POST(req: NextRequest) {
     }
 
     let finalProjectId = projectId || null
+    let finalClientId = clientId || null
     let quote: any = null
 
     if (quoteId) {
@@ -247,6 +250,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (clientId) {
+          finalClientId = clientId
           // מחפש פרויקט קיים עם אותו לקוח
           const existingProject = await prisma.project.findFirst({
             where: {
@@ -262,11 +266,19 @@ export async function POST(req: NextRequest) {
             finalProjectId = existingProject.id
           } else {
             // יצירת פרויקט חדש מההצעה
+            // הסרת "הצעת מחיר - " מהתחלה אם קיים
+            let projectName = quote.title || `פרויקט מ-${quote.quoteNumber}`
+            if (projectName.startsWith('הצעת מחיר - ')) {
+              projectName = projectName.replace(/^הצעת מחיר - /, '')
+            } else if (projectName.startsWith('הצעת מחיר ')) {
+              projectName = projectName.replace(/^הצעת מחיר /, '')
+            }
+            
             const newProject = await prisma.project.create({
               data: {
                 companyId: user.companyId,
                 clientId: clientId,
-                name: quote.title || `פרויקט מ-${quote.quoteNumber}`,
+                name: projectName,
                 description: quote.description,
                 status: "PLANNING",
                 budget: quote.total,
@@ -300,10 +312,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // אם יש פרויקט אבל אין clientId, נביא את clientId מהפרויקט
+    if (finalProjectId && !finalClientId) {
+      const project = await prisma.project.findUnique({
+        where: { id: finalProjectId },
+        select: { clientId: true },
+      })
+      if (project?.clientId) {
+        finalClientId = project.clientId
+      }
+    }
+
     const payment = await prisma.payment.create({
       data: {
         companyId: user.companyId,
         projectId: finalProjectId,
+        clientId: finalClientId,
         quoteId: quoteId || null,
         amount,
         currency,

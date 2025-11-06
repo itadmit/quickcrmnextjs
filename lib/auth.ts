@@ -54,16 +54,63 @@ export const authOptions: NextAuthOptions = {
         token.companyId = user.companyId
         token.companyName = user.companyName
       }
+      
+      // בדיקה שהמשתמש עדיין קיים בכל פעם ש-JWT מתעדכן
+      if (token.id) {
+        try {
+          const existingUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { id: true, email: true, name: true, role: true, companyId: true },
+          })
+          
+          if (!existingUser) {
+            // המשתמש נמחק - נחזיר null כדי להפסיק את ה-session
+            return null as any
+          }
+          
+          // עדכון הנתונים מה-DB
+          token.id = existingUser.id
+          token.name = existingUser.name
+          token.role = existingUser.role
+          token.companyId = existingUser.companyId
+        } catch (error) {
+          console.error('Error checking user in JWT callback:', error)
+          return null as any
+        }
+      }
+      
       return token
     },
     async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string
-        session.user.name = token.name as string
-        session.user.role = token.role as string
-        session.user.companyId = token.companyId as string
-        session.user.companyName = token.companyName as string
+      // אם token הוא null, המשתמש נמחק - נחזיר session ריק
+      if (!token || !token.id) {
+        return null as any
       }
+      
+      // בדיקה נוספת שהמשתמש עדיין קיים
+      try {
+        const existingUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { id: true, email: true, name: true, role: true, companyId: true },
+        })
+        
+        if (!existingUser) {
+          // המשתמש נמחק - נחזיר null
+          return null as any
+        }
+        
+        if (session.user) {
+          session.user.id = existingUser.id
+          session.user.name = existingUser.name
+          session.user.role = existingUser.role
+          session.user.companyId = existingUser.companyId
+          session.user.companyName = token.companyName as string
+        }
+      } catch (error) {
+        console.error('Error checking user in session callback:', error)
+        return null as any
+      }
+      
       return session
     }
   },

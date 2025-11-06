@@ -88,6 +88,8 @@ model Company {
   events         Event[]
   quotes         Quote[]
   payments       Payment[]
+  taskTemplates  TaskTemplate[]
+  invitations   Invitation[]
 
   @@map("companies")
 }
@@ -111,6 +113,9 @@ model User {
   createdAutomations Automation[]   @relation("AutomationCreator")
   auditLogs          AuditLog[]
   notifications      Notification[]
+  sentInvitations    Invitation[]   @relation("Inviter")
+  invitation         Invitation?    @relation("InvitedUser")
+  permissions        UserPermission[]
 
   @@index([companyId])
   @@index([email])
@@ -173,6 +178,7 @@ model Client {
   budgets  Budget[]
   files    File[]
   tasks    Task[]
+  payments Payment[]
 
   @@index([companyId])
   @@index([status])
@@ -412,6 +418,20 @@ model EmailTemplate {
   @@map("email_templates")
 }
 
+model TaskTemplate {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  tasks       String[] // Array of task titles
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("task_templates")
+}
+
 model Notification {
   id         String   @id @default(cuid())
   companyId  String
@@ -569,6 +589,8 @@ model Payment {
   project          Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   quoteId          String?
   quote            Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  clientId         String?
+  client           Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
   amount           Float
   currency         String        @default("ILS")
   status           PaymentStatus @default(PENDING)
@@ -585,7 +607,54 @@ model Payment {
   @@index([companyId])
   @@index([projectId])
   @@index([quoteId])
+  @@index([clientId])
   @@index([status])
   @@index([transactionId])
   @@map("payments")
+}
+
+model Invitation {
+  id          String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  email      String
+  name       String?
+  token      String   @unique
+  invitedBy  String
+  inviter    User     @relation("Inviter", fields: [invitedBy], references: [id])
+  permissions Json    // JSON object with permissions for each sidebar item
+  status     InvitationStatus @default(PENDING)
+  acceptedAt DateTime?
+  userId     String?  @unique // User ID after accepting
+  user       User?    @relation("InvitedUser", fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  expiresAt  DateTime
+
+  @@index([companyId])
+  @@index([email])
+  @@index([token])
+  @@index([status])
+  @@map("invitations")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model UserPermission {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission String // e.g., "dashboard", "tasks", "calendar", etc.
+  allowed   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, permission])
+  @@index([userId])
+  @@map("user_permissions")
 }

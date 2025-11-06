@@ -5,6 +5,14 @@ import { useParams, useRouter } from "next/navigation"
 import { CheckCircle, CreditCard, AlertCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { SignaturePad } from "@/components/ui/signature-pad"
 
@@ -29,6 +37,7 @@ export default function ApproveQuotePage() {
   const [quote, setQuote] = useState<Quote | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [signature, setSignature] = useState<string | null>(null)
+  const [paymentProvider, setPaymentProvider] = useState<"payplus" | "invoice4u">("payplus")
 
   useEffect(() => {
     if (params.id) {
@@ -88,37 +97,69 @@ export default function ApproveQuotePage() {
         return
       }
 
-      // שלב 2: יצירת payment link והעברה ישירה ל-PayPlus
-      const paymentLinkRes = await fetch(`/api/quotes/${params.id}/generate-payment-link`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currency: "ILS",
-          customer: quote.lead ? {
-            customer_name: quote.lead.name,
-            email: quote.lead.email || undefined,
-            phone: quote.lead.phone || undefined,
-          } : undefined,
-        }),
-      })
-
-      if (paymentLinkRes.ok) {
-        const data = await paymentLinkRes.json()
-        if (data.paymentLink) {
-          // מעבר ישיר לדף התשלום של PayPlus
-          window.location.href = data.paymentLink
-        } else {
-          throw new Error("Payment link not generated")
-        }
-      } else {
-        const errorData = await paymentLinkRes.json()
-        const errorMessage = errorData.error || errorData.details || "שגיאה ביצירת קישור תשלום"
-        toast({
-          title: "שגיאה ביצירת קישור תשלום",
-          description: errorMessage,
-          variant: "destructive",
-          duration: 10000, // הצגה למשך 10 שניות כדי שהמשתמש יוכל לקרוא
+      // שלב 2: יצירת payment link לפי מערכת התשלום שנבחרה
+      if (paymentProvider === "payplus") {
+        const paymentLinkRes = await fetch(`/api/quotes/${params.id}/generate-payment-link`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            currency: "ILS",
+            customer: quote.lead ? {
+              customer_name: quote.lead.name,
+              email: quote.lead.email || undefined,
+              phone: quote.lead.phone || undefined,
+            } : undefined,
+          }),
         })
+
+        if (paymentLinkRes.ok) {
+          const data = await paymentLinkRes.json()
+          if (data.paymentLink) {
+            // מעבר ישיר לדף התשלום של PayPlus
+            window.location.href = data.paymentLink
+          } else {
+            throw new Error("Payment link not generated")
+          }
+        } else {
+          const errorData = await paymentLinkRes.json()
+          const errorMessage = errorData.error || errorData.details || "שגיאה ביצירת קישור תשלום"
+          toast({
+            title: "שגיאה ביצירת קישור תשלום",
+            description: errorMessage,
+            variant: "destructive",
+            duration: 10000,
+          })
+        }
+      } else if (paymentProvider === "invoice4u") {
+        // יצירת תשלום דרך Invoice4U Clearing
+        const clearingRes = await fetch(`/api/integrations/invoice4u/clearing/process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            quoteId: params.id,
+            amount: (quote.total * 0.4).toString(), // מקדמה 40%
+            description: `מקדמה עבור הצעה ${quote.quoteNumber}`,
+            paymentType: "regular",
+          }),
+        })
+
+        if (clearingRes.ok) {
+          const data = await clearingRes.json()
+          if (data.clearingUrl) {
+            window.location.href = data.clearingUrl
+          } else {
+            throw new Error("Clearing URL not generated")
+          }
+        } else {
+          const errorData = await clearingRes.json()
+          const errorMessage = errorData.error || "שגיאה ביצירת קישור תשלום"
+          toast({
+            title: "שגיאה ביצירת קישור תשלום",
+            description: errorMessage,
+            variant: "destructive",
+            duration: 10000,
+          })
+        }
       }
     } catch (error: any) {
       console.error("Error approving quote:", error)
@@ -206,6 +247,28 @@ export default function ApproveQuotePage() {
               <p className="text-sm text-gray-600">
                 לאחר אישור ההצעה, תועבר לעמוד תשלום מקדמה
               </p>
+            </div>
+
+            {/* בחירת מערכת תשלום */}
+            <div className="border-t pt-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">מערכת תשלום</h3>
+              <div className="grid gap-2">
+                <Label htmlFor="paymentProvider">בחר מערכת תשלום</Label>
+                <Select
+                  value={paymentProvider}
+                  onValueChange={(value: "payplus" | "invoice4u") =>
+                    setPaymentProvider(value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="payplus">PayPlus</SelectItem>
+                    <SelectItem value="invoice4u">Invoice4U Clearing</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* חתימה דיגיטלית */}

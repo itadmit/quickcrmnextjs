@@ -85,14 +85,20 @@ export function getEmailTemplate({
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   <title>${title}</title>
   <style>
+    * {
+      direction: rtl;
+      text-align: right;
+    }
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background-color: #f5f5f5;
       margin: 0;
       padding: 0;
       direction: rtl;
+      text-align: right;
     }
     .container {
       max-width: 600px;
@@ -117,6 +123,16 @@ export function getEmailTemplate({
       padding: 30px 20px;
       color: #333;
       line-height: 1.6;
+      direction: rtl;
+      text-align: right;
+    }
+    .content h2 {
+      direction: rtl;
+      text-align: right;
+    }
+    .content p {
+      direction: rtl;
+      text-align: right;
     }
     .footer {
       background-color: #f9f9f9;

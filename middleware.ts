@@ -13,7 +13,8 @@ export const config = {
     "/inbox/:path*",
     "/calendar/:path*",
     "/ai/:path*",
+    "/quotes/:path*",
+    "/payments/:path*",
+    "/notifications/:path*",
   ]
 }
-
-

@@ -301,26 +301,26 @@ export default function LeadsPage() {
                                 <DropdownMenuItem onClick={(e) => {
                                   e.stopPropagation()
                                   router.push(`/leads/${lead.id}`)
-                                }} className="flex-row-reverse">
-                                  <Eye className="w-4 h-4 ml-2 flex-shrink-0" />
-                                  צפה בפרטים
+                                }} className="flex items-center gap-2">
+                                  <Eye className="w-4 h-4 flex-shrink-0" />
+                                  <span>צפה בפרטים</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={(e) => {
                                   e.stopPropagation()
                                   setEditingLead(lead)
-                                }} className="flex-row-reverse">
-                                  <Edit className="w-4 h-4 ml-2 flex-shrink-0" />
-                                  ערוך
+                                }} className="flex items-center gap-2">
+                                  <Edit className="w-4 h-4 flex-shrink-0" />
+                                  <span>ערוך</span>
                                 </DropdownMenuItem>
                               <DropdownMenuItem 
-                                className="text-red-600 flex-row-reverse"
+                                className="text-red-600 flex items-center gap-2"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleDeleteLead(lead.id, lead.name)
                                 }}
                               >
-                                <Trash className="w-4 h-4 ml-2 flex-shrink-0" />
-                                מחק
+                                <Trash className="w-4 h-4 flex-shrink-0" />
+                                <span>מחק</span>
                               </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>

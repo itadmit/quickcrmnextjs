@@ -3,24 +3,37 @@
 ## סקירה כללית
 
 מערכת ה-CRM משולבת עם [Invoice4U](https://www.invoice4u.co.il/) - מערכת להנפקת מסמכי חשבוניות ישראלית.
-האינטגרציה מאפשרת להוציא מסמכים ישירות מהמערכת:
+האינטגרציה כוללת **שני ממשקים נפרדים**:
 
+### 📄 Documents API - הוצאת מסמכים
 - **הצעת מחיר (InvoiceQuote)** - DocumentType: 7
 - **חשבון עסקה (ProformaInvoice)** - DocumentType: 5  
 - **חשבונית מס (Invoice)** - DocumentType: 1
 - **חשבונית מס קבלה (InvoiceReceipt)** - DocumentType: 3
 
-## הגדרת האינטגרציה
+### 💳 Clearing APIs - ביצוע תשלומים
+- **תשלומים רגילים (Regular Clearing)**
+- **שמירת כרטיסי אשראי (Tokenization)**
+- **חיוב עם טוקן שמור (Charge with Token)**
+- **תשלומים חוזרים (Standing Orders)**
+- **החזרות (Refunds)**
+- **היסטוריית תשלומים (Clearing Logs)**
 
-### שלב 1: קבלת פרטי התחברות
+---
+
+## 📄 Documents API - הוצאת מסמכים
+
+### הגדרת האינטגרציה למסמכים
+
+#### שלב 1: קבלת פרטי התחברות
 
 1. היכנס לחשבון ה-Invoice4U שלך
 2. השתמש באותם פרטי התחברות (אימייל וסיסמה) שבהם אתה נכנס למערכת
 
-### שלב 2: חיבור המערכת
+#### שלב 2: חיבור המערכת
 
 1. עבור אל **הגדרות → אינטגרציות**
-2. מצא את הכרטיס "Invoice4U - הוצאת מסמכים"
+2. מצא את הכרטיס **"Invoice4U - הוצאת מסמכים"**
 3. הזן את האימייל והסיסמה שלך
 4. בחר האם להשתמש בסביבת ייצור או בדיקות:
    - ✅ **Production (מומלץ)**: `https://api.invoice4u.co.il`
@@ -29,9 +42,9 @@
 
 המערכת תבצע בדיקת תקינות של הנתונים ותחבר את החשבון.
 
-## שימוש באינטגרציה
+### שימוש באינטגרציה למסמכים
 
-### הוצאת מסמך ללקוח
+#### הוצאת מסמך ללקוח
 
 1. עבור לדף הלקוח הרצוי
 2. לחץ על הכפתור **"הוצא מסמך Invoice4U"**
@@ -60,11 +73,11 @@
 npm install soap
 ```
 
-### קבצים חשובים
+### קבצים חשובים - Documents API
 
 ```
-lib/invoice4u.ts                                    # Client לחיבור ל-API
-app/api/integrations/invoice4u/route.ts            # ניהול הגדרות האינטגרציה
+lib/invoice4u.ts                                    # Client לחיבור ל-Documents API
+app/api/integrations/invoice4u/route.ts            # ניהול הגדרות האינטגרציה למסמכים
 app/api/integrations/invoice4u/documents/route.ts  # יצירת מסמכים
 components/dialogs/Invoice4UDialog.tsx             # ממשק להוצאת מסמכים
 ```
@@ -90,10 +103,10 @@ model Integration {
 }
 ```
 
-## API Endpoints
+### API Endpoints - Documents
 
-### POST /api/integrations/invoice4u
-**חיבור/עדכון אינטגרציה**
+#### POST /api/integrations/invoice4u
+**חיבור/עדכון אינטגרציה למסמכים**
 
 ```json
 {
@@ -104,13 +117,13 @@ model Integration {
 }
 ```
 
-### GET /api/integrations/invoice4u
-**בדיקת סטטוס אינטגרציה**
+#### GET /api/integrations/invoice4u
+**בדיקת סטטוס אינטגרציה למסמכים**
 
-### DELETE /api/integrations/invoice4u
-**ניתוק אינטגרציה**
+#### DELETE /api/integrations/invoice4u
+**ניתוק אינטגרציה למסמכים**
 
-### POST /api/integrations/invoice4u/documents
+#### POST /api/integrations/invoice4u/documents
 **יצירת מסמך**
 
 ```json
@@ -129,11 +142,218 @@ model Integration {
 }
 ```
 
-### GET /api/integrations/invoice4u/documents
+#### GET /api/integrations/invoice4u/documents
 **קבלת רשימת מסמכים**
 
 Query Parameters:
 - `documentType`: quote | proforma | invoice | receipt
+
+---
+
+## 💳 Clearing APIs - ביצוע תשלומים
+
+### סקירה כללית
+
+Clearing APIs הוא ממשק נפרד מ-Documents API ומשמש לביצוע תשלומים דרך Invoice4U.
+הממשק מאפשר:
+
+- **תשלומים רגילים** - תשלום חד פעמי
+- **Tokenization** - שמירת כרטיסי אשראי לשימוש חוזר
+- **Charge with Token** - חיוב עם כרטיס שמור
+- **Standing Orders** - תשלומים חוזרים (למשל חודשי)
+- **Refunds** - החזרות כספיות
+- **Clearing Logs** - היסטוריית תשלומים
+
+### הגדרת האינטגרציה לתשלומים
+
+#### שלב 1: קבלת API Key (מומלץ)
+
+1. התחבר ל-[private.invoice4u.co.il](https://private.invoice4u.co.il)
+2. לך ל-**Settings → Account Settings → API**
+3. לחץ על **Generate API Key**
+4. העתק את ה-API Key (מומלץ להשתמש ב-API Key במקום Email+Password)
+
+**אלטרנטיבה**: ניתן להשתמש ב-Email + Password (כמו ב-Documents API)
+
+#### שלב 2: חיבור המערכת
+
+1. עבור אל **הגדרות → אינטגרציות**
+2. מצא את הכרטיס **"Invoice4U - תשלומים (Clearing)"**
+3. בחר אחת מהאפשרויות:
+   - ✅ **API Key (מומלץ)**: הזן את ה-API Key שהתקבל
+   - **Email + Password**: הזן את האימייל והסיסמה
+4. בחר האם להשתמש בסביבת ייצור או בדיקות
+5. לחץ על "התחבר ל-Invoice4U Clearing"
+
+### שימוש באינטגרציה לתשלומים
+
+#### ביצוע תשלום רגיל
+
+```typescript
+const response = await fetch('/api/integrations/invoice4u/clearing/process', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    clientId: 'client_id_here',
+    quoteId: 'quote_id_here', // אופציונלי
+    amount: 1000,
+    description: 'תשלום עבור שירות',
+    paymentType: 'regular', // 'regular' | 'tokenize' | 'charge_with_token' | 'standing_order'
+    returnUrl: 'https://your-domain.com/payment-success',
+  }),
+});
+
+const { clearingUrl } = await response.json();
+// הצג את clearingUrl ב-iframe או redirect למשתמש
+```
+
+#### שמירת כרטיס אשראי (Tokenization)
+
+```typescript
+const response = await fetch('/api/integrations/invoice4u/clearing/process', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    clientId: 'client_id_here',
+    amount: 1000,
+    paymentType: 'tokenize', // שמירת טוקן ללא חיוב מיידי
+    returnUrl: 'https://your-domain.com/payment-success',
+  }),
+});
+```
+
+#### חיוב עם טוקן שמור
+
+```typescript
+const response = await fetch('/api/integrations/invoice4u/clearing/process', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    clientId: 'client_id_here',
+    amount: 500,
+    paymentType: 'charge_with_token', // חיוב עם טוקן קיים
+    customerId: 12345, // ID הלקוח ב-Invoice4U שיש לו טוקן שמור
+  }),
+});
+```
+
+#### תשלומים חוזרים (Standing Order)
+
+```typescript
+const response = await fetch('/api/integrations/invoice4u/clearing/process', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    clientId: 'client_id_here',
+    amount: 1000,
+    paymentType: 'standing_order',
+    standingOrderDuration: 12, // מספר חודשים (12 = שנה)
+    standingOrderCallbackUrl: 'https://your-domain.com/webhook/standing-order',
+    returnUrl: 'https://your-domain.com/payment-success',
+  }),
+});
+```
+
+#### קבלת היסטוריית תשלומים
+
+```typescript
+// לפי Payment ID
+const response = await fetch('/api/integrations/invoice4u/clearing/logs?paymentId=PAYMENT_123');
+
+// לפי Clearing Log ID
+const response = await fetch('/api/integrations/invoice4u/clearing/logs?clearingLogId=12345');
+```
+
+### API Endpoints - Clearing
+
+#### POST /api/integrations/invoice4u/clearing
+**חיבור/עדכון אינטגרציה לתשלומים**
+
+```json
+{
+  "apiKey": "your-api-key-here",  // מומלץ
+  // או
+  "email": "your-email@example.com",
+  "password": "your-password",
+  "useProduction": true
+}
+```
+
+#### GET /api/integrations/invoice4u/clearing
+**בדיקת סטטוס אינטגרציה לתשלומים**
+
+#### DELETE /api/integrations/invoice4u/clearing
+**ניתוק אינטגרציה לתשלומים**
+
+#### POST /api/integrations/invoice4u/clearing/process
+**ביצוע תשלום**
+
+```json
+{
+  "clientId": "client_id_here",
+  "quoteId": "quote_id_here",
+  "amount": 1000,
+  "description": "תשלום עבור שירות",
+  "paymentType": "regular",
+  "returnUrl": "https://your-domain.com/success",
+  "isAutoCreateCustomer": true,
+  "createDocument": false
+}
+```
+
+#### GET /api/integrations/invoice4u/clearing/logs
+**קבלת היסטוריית תשלומים**
+
+Query Parameters:
+- `paymentId`: מזהה תשלום
+- `clearingLogId`: מזהה clearing log
+
+### קבצים חשובים - Clearing APIs
+
+```
+lib/invoice4u-clearing.ts                          # Client לחיבור ל-Clearing APIs
+app/api/integrations/invoice4u/clearing/route.ts   # ניהול הגדרות Clearing
+app/api/integrations/invoice4u/clearing/process/route.ts  # ביצוע תשלומים
+app/api/integrations/invoice4u/clearing/logs/route.ts     # היסטוריית תשלומים
+```
+
+### סוגי תשלום (Payment Types)
+
+| סוג | ערך | תיאור |
+|-----|-----|-------|
+| `regular` | ClearingType.Regular | תשלום רגיל חד פעמי |
+| `tokenize` | AddToken=true | שמירת טוקן ללא חיוב |
+| `tokenize_and_charge` | AddTokenAndCharge=true | שמירת טוקן וחיוב מיידי |
+| `charge_with_token` | ChargeWithToken=true | חיוב עם טוקן קיים |
+| `standing_order` | IsStandingOrderClearance=true | תשלומים חוזרים |
+
+### טיפול בשגיאות - Clearing
+
+שגיאות נפוצות:
+
+1. **"EmptyObjectInRequest" (146)**
+   - הבקשה ריקה
+   - ודא ששולחים את כל הפרמטרים הנדרשים
+
+2. **"ApiKeyNotInCorrectFormat" (303)**
+   - API Key לא תקין
+   - בדוק את הפורמט של ה-API Key
+
+3. **"UnauthorizedUser" (80)**
+   - משתמש לא מורשה
+   - בדוק את פרטי ההתחברות
+
+4. **"CustomerNotFound" (136)**
+   - לקוח לא נמצא
+   - השתמש ב-`isAutoCreateCustomer: true` ליצירה אוטומטית
+
+5. **"ApiTokenizationNotApprovedInClearingTerminal" (309)**
+   - Tokenization לא מאושר בטרמינל
+   - יש לאשר את Tokenization בהגדרות Invoice4U
+
+6. **"ApiStandingOrderNotApprovedInClearingTerminal" (310)**
+   - Standing Order לא מאושר
+   - יש לאשר את Standing Orders בהגדרות Invoice4U
 
 ## התאמות אישיות
 
@@ -190,9 +410,9 @@ TaxPercentage: 17,  // או 18, תלוי במדיניות המס הנוכחית
 3. בדוק את [הדוקומנטציה של Invoice4U](https://invoice4uapi.docs.apiary.io/)
 4. צור קשר עם תמיכת Invoice4U
 
-## דוגמאות שימוש
+### דוגמאות שימוש - Documents
 
-### דוגמה 1: הוצאת הצעת מחיר
+#### דוגמה 1: הוצאת הצעת מחיר
 
 ```typescript
 const result = await fetch('/api/integrations/invoice4u/documents', {
@@ -211,7 +431,7 @@ const result = await fetch('/api/integrations/invoice4u/documents', {
 });
 ```
 
-### דוגמה 2: חשבונית מס קבלה
+#### דוגמה 2: חשבונית מס קבלה
 
 ```typescript
 const result = await fetch('/api/integrations/invoice4u/documents', {
@@ -231,7 +451,21 @@ const result = await fetch('/api/integrations/invoice4u/documents', {
 
 ---
 
+## הבדלים בין Documents API ל-Clearing APIs
+
+| Documents API | Clearing APIs |
+|---------------|---------------|
+| יצירת מסמכים (חשבוניות) | ביצוע תשלומים |
+| Email + Password | API Key (מומלץ) או Email + Password |
+| SOAP/WSDL | SOAP/WSDL |
+| `CreateDocument`, `CreateCustomer` | `ProcessApiRequestV2`, `GetClearingLogById` |
+| `/api/integrations/invoice4u/documents` | `/api/integrations/invoice4u/clearing/process` |
+
+**חשוב**: שתי האינטגרציות נפרדות ויכולות לעבוד במקביל. ניתן להשתמש ב-Documents API למסמכים וב-Clearing APIs לתשלומים.
+
+---
+
 **נבנה על ידי**: צוות הפיתוח של QuickCRM  
 **תאריך עדכון אחרון**: נובמבר 2025  
-**גרסה**: 1.0.0
+**גרסה**: 2.0.0 (כולל Clearing APIs)
 

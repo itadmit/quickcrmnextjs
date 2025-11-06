@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, Check } from "lucide-react"
 
-const taskKits = [
+// תבניות ברירת מחדל (fallback אם אין תבניות ב-DB)
+const defaultTaskKits = [
   {
     id: "onboarding",
     name: "Onboarding לקוח חדש",
@@ -79,6 +80,39 @@ export function TaskKitDialog({ projectId, clientId, onTasksCreated }: TaskKitDi
   const [open, setOpen] = useState(false)
   const [selectedKit, setSelectedKit] = useState<string | null>(null)
   const [customTasks, setCustomTasks] = useState<string[]>([""])
+  const [taskKits, setTaskKits] = useState(defaultTaskKits)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      fetchTemplates()
+    }
+  }, [open])
+
+  const fetchTemplates = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch("/api/tasks/templates")
+      if (response.ok) {
+        const templates = await response.json()
+        // ממיר תבניות מה-DB לפורמט של taskKits
+        const dbKits = templates.map((template: any) => ({
+          id: template.id,
+          name: template.name,
+          description: template.description || "",
+          tasks: template.tasks,
+        }))
+        // משלב תבניות מה-DB עם תבניות ברירת מחדל (אם יש)
+        setTaskKits([...dbKits, ...defaultTaskKits])
+      }
+    } catch (error) {
+      console.error("Error fetching templates:", error)
+      // במקרה של שגיאה, נשתמש בתבניות ברירת מחדל
+      setTaskKits(defaultTaskKits)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSelectKit = (kitId: string) => {
     setSelectedKit(kitId)
@@ -129,8 +163,11 @@ export function TaskKitDialog({ projectId, clientId, onTasksCreated }: TaskKitDi
           {/* Task Kits */}
           <div>
             <h3 className="font-medium mb-3">קיטים מוכנים</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {taskKits.map((kit) => (
+            {loading ? (
+              <div className="text-center py-4 text-gray-500">טוען תבניות...</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {taskKits.map((kit) => (
                 <div
                   key={kit.id}
                   onClick={() => handleSelectKit(kit.id)}
@@ -151,8 +188,9 @@ export function TaskKitDialog({ projectId, clientId, onTasksCreated }: TaskKitDi
                     {kit.tasks.length} משימות
                   </div>
                 </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Show selected kit tasks */}
             {selectedKit && (

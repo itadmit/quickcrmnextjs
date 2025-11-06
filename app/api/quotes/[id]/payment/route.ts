@@ -102,11 +102,19 @@ export async function POST(
             projectId = existingProject.id
           } else {
             // יצירת פרויקט חדש
+            // הסרת "הצעת מחיר - " מהתחלה אם קיים
+            let projectName = quote.title || `פרויקט מ-${quote.quoteNumber}`
+            if (projectName.startsWith('הצעת מחיר - ')) {
+              projectName = projectName.replace(/^הצעת מחיר - /, '')
+            } else if (projectName.startsWith('הצעת מחיר ')) {
+              projectName = projectName.replace(/^הצעת מחיר /, '')
+            }
+            
             const project = await prisma.project.create({
               data: {
                 companyId: quote.companyId,
                 clientId: clientId,
-                name: quote.title || `פרויקט מ-${quote.quoteNumber}`,
+                name: projectName,
                 description: quote.description,
                 status: "PLANNING",
                 budget: quote.total,

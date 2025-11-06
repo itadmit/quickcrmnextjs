@@ -33,6 +33,7 @@ interface Quote {
   id: string
   quoteNumber: string
   title: string
+  total?: number
 }
 
 interface NewPaymentDialogProps {
@@ -40,6 +41,7 @@ interface NewPaymentDialogProps {
   triggerButton?: React.ReactNode
   projectId?: string
   quoteId?: string
+  clientId?: string // אם יש clientId, נסתיר את האופציה של פרויקט
 }
 
 export function NewPaymentDialog({
@@ -47,14 +49,24 @@ export function NewPaymentDialog({
   triggerButton,
   projectId,
   quoteId,
+  clientId,
 }: NewPaymentDialogProps) {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const [quotes, setQuotes] = useState<Quote[]>([])
+  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null)
+  const [quoteBalance, setQuoteBalance] = useState<number | null>(null)
+  const [exceedsBalance, setExceedsBalance] = useState(false)
+  const [confirmExceed, setConfirmExceed] = useState(false)
+  // ברירת מחדל: PayPlus אם יש הצעה, אחרת תשלום ידני
+  const [paymentProvider, setPaymentProvider] = useState<"payplus" | "invoice4u" | "manual">(
+    quoteId ? "payplus" : "manual"
+  )
+  // אם יש clientId, לא נציג את האופציה של פרויקט (כי הוא נגזר מההצעה)
   const [linkType, setLinkType] = useState<"project" | "quote" | "none">(
-    projectId ? "project" : quoteId ? "quote" : "none"
+    projectId && !clientId ? "project" : quoteId ? "quote" : "none"
   )
 
   const [formData, setFormData] = useState({
@@ -82,12 +94,34 @@ export function NewPaymentDialog({
     if (projectId) {
       setFormData((prev) => ({ ...prev, projectId }))
       setLinkType("project")
+      setPaymentProvider("manual") // תשלום ידני לפרויקט
     }
     if (quoteId) {
       setFormData((prev) => ({ ...prev, quoteId }))
       setLinkType("quote")
+      setPaymentProvider("payplus") // ברירת מחדל: PayPlus להצעות
+      // טעינת יתרה אם יש quoteId
+      if (open) {
+        fetchQuoteBalance(quoteId)
+      }
     }
-  }, [projectId, quoteId])
+  }, [projectId, quoteId, open])
+
+  // בדיקת יתרה כאשר משתנה הסכום או ההצעה
+  useEffect(() => {
+    if (linkType === "quote" && formData.quoteId && formData.amount) {
+      const amount = parseFloat(formData.amount)
+      if (quoteBalance !== null && amount > quoteBalance) {
+        setExceedsBalance(true)
+      } else {
+        setExceedsBalance(false)
+        setConfirmExceed(false)
+      }
+    } else {
+      setExceedsBalance(false)
+      setConfirmExceed(false)
+    }
+  }, [formData.amount, formData.quoteId, quoteBalance, linkType])
 
   const fetchProjects = async () => {
     try {
@@ -107,9 +141,41 @@ export function NewPaymentDialog({
       if (response.ok) {
         const data = await response.json()
         setQuotes(data)
+        // אם יש quoteId, מצא את ההצעה והצג את היתרה
+        if (quoteId) {
+          const quote = data.find((q: Quote) => q.id === quoteId)
+          if (quote) {
+            setSelectedQuote(quote)
+            fetchQuoteBalance(quote.id)
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching quotes:", error)
+    }
+  }
+
+  const fetchQuoteBalance = async (qId: string) => {
+    try {
+      // קבלת פרטי ההצעה
+      const quoteRes = await fetch(`/api/quotes/${qId}`)
+      if (!quoteRes.ok) return
+      
+      const quote = await quoteRes.json()
+      if (!quote || !quote.total) return
+      
+      // קבלת התשלומים הקיימים עבור ההצעה
+      const paymentsRes = await fetch(`/api/payments?quoteId=${qId}`)
+      if (paymentsRes.ok) {
+        const payments = await paymentsRes.json()
+        const paidAmount = payments
+          .filter((p: any) => p.status === "COMPLETED")
+          .reduce((sum: number, p: any) => sum + p.amount, 0)
+        const balance = quote.total - paidAmount
+        setQuoteBalance(Math.max(0, balance))
+      }
+    } catch (error) {
+      console.error("Error fetching quote balance:", error)
     }
   }
 
@@ -127,7 +193,71 @@ export function NewPaymentDialog({
       return
     }
 
+    // בדיקת יתרה אם יש הצעה
+    if (linkType === "quote" && formData.quoteId && quoteBalance !== null) {
+      const amount = parseFloat(formData.amount)
+      if (amount > quoteBalance && !confirmExceed) {
+        toast({
+          title: "שגיאה",
+          description: "הסכום עולה על היתרה. יש לאשר שאתה יודע שאתה חורג",
+          variant: "destructive",
+        })
+        setLoading(false)
+        return
+      }
+    }
+
+    // אם יש הצעה, יש לוודא שנבחרה מערכת תשלום (לא רק תשלום ידני)
+    if (linkType === "quote" && formData.quoteId && paymentProvider === "manual") {
+      const confirmed = confirm("תשלום ידני רק יוצר רשומה במערכת ולא מעביר לדף סליקה.\n\nהאם אתה בטוח שברצונך להמשיך?")
+      if (!confirmed) {
+        setLoading(false)
+        return
+      }
+    }
+
     try {
+      // אם נבחרה מערכת תשלום אוטומטית, נפעיל אותה
+      if (paymentProvider === "payplus" && linkType === "quote" && formData.quoteId) {
+        const paymentLinkRes = await fetch(`/api/quotes/${formData.quoteId}/generate-payment-link`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            currency: formData.currency,
+            amount: parseFloat(formData.amount),
+          }),
+        })
+        
+        if (paymentLinkRes.ok) {
+          const data = await paymentLinkRes.json()
+          if (data.paymentLink) {
+            window.location.href = data.paymentLink
+            return
+          }
+        }
+      } else if (paymentProvider === "invoice4u" && linkType === "quote" && formData.quoteId) {
+        // יצירת תשלום דרך Invoice4U Clearing
+        const clearingRes = await fetch(`/api/integrations/invoice4u/clearing/process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            quoteId: formData.quoteId,
+            amount: formData.amount,
+            description: formData.description || `תשלום עבור הצעה ${selectedQuote?.quoteNumber || ''}`,
+            paymentType: "regular",
+          }),
+        })
+        
+        if (clearingRes.ok) {
+          const data = await clearingRes.json()
+          if (data.clearingUrl) {
+            window.location.href = data.clearingUrl
+            return
+          }
+        }
+      }
+
+      // תשלום ידני - יצירת תשלום רגיל
       const payload: any = {
         amount: parseFloat(formData.amount),
         currency: formData.currency,
@@ -137,7 +267,13 @@ export function NewPaymentDialog({
         notes: formData.notes || undefined,
       }
 
-      if (linkType === "project" && formData.projectId) {
+      // אם יש clientId, נוסיף אותו ל-payload
+      if (clientId) {
+        payload.clientId = clientId
+      }
+
+      // אם יש clientId, לא נשלח projectId (כי הוא נגזר מההצעה)
+      if (!clientId && linkType === "project" && formData.projectId) {
         payload.projectId = formData.projectId
       } else if (linkType === "quote" && formData.quoteId) {
         payload.quoteId = formData.quoteId
@@ -223,39 +359,72 @@ export function NewPaymentDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            {/* סוג קשר */}
-            <div className="grid gap-2">
-              <Label htmlFor="linkType">קשור ל-</Label>
-              <Select
-                value={linkType}
-                onValueChange={(value: "project" | "quote" | "none") => {
-                  setLinkType(value)
-                  if (value === "none") {
-                    setFormData((prev) => ({
-                      ...prev,
-                      projectId: "",
-                      quoteId: "",
-                    }))
-                  } else if (value === "project") {
-                    setFormData((prev) => ({ ...prev, quoteId: "" }))
-                  } else {
-                    setFormData((prev) => ({ ...prev, projectId: "" }))
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">ללא קשר</SelectItem>
-                  <SelectItem value="project">פרויקט</SelectItem>
-                  <SelectItem value="quote">הצעה</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* סוג קשר - אם יש clientId, לא נציג את האופציה של פרויקט */}
+            {!clientId && (
+              <div className="grid gap-2">
+                <Label htmlFor="linkType">קשור ל-</Label>
+                <Select
+                  value={linkType}
+                  onValueChange={(value: "project" | "quote" | "none") => {
+                    setLinkType(value)
+                    if (value === "none") {
+                      setFormData((prev) => ({
+                        ...prev,
+                        projectId: "",
+                        quoteId: "",
+                      }))
+                    } else if (value === "project") {
+                      setFormData((prev) => ({ ...prev, quoteId: "" }))
+                    } else {
+                      setFormData((prev) => ({ ...prev, projectId: "" }))
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">ללא קשר</SelectItem>
+                    <SelectItem value="project">פרויקט</SelectItem>
+                    <SelectItem value="quote">הצעה</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
-            {/* פרויקט */}
-            {linkType === "project" && (
+            {/* אם יש clientId, נציג רק אפשרות של הצעה או ללא קשר */}
+            {clientId && (
+              <div className="grid gap-2">
+                <Label htmlFor="linkType">קשור ל-</Label>
+                <Select
+                  value={linkType === "project" ? "none" : linkType}
+                  onValueChange={(value: "quote" | "none") => {
+                    const newLinkType = value as "project" | "quote" | "none"
+                    setLinkType(newLinkType)
+                    if (value === "none") {
+                      setFormData((prev) => ({
+                        ...prev,
+                        projectId: "",
+                        quoteId: "",
+                      }))
+                    } else {
+                      setFormData((prev) => ({ ...prev, projectId: "", quoteId: prev.quoteId || "" }))
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">ללא קשר</SelectItem>
+                    <SelectItem value="quote">הצעה</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* פרויקט - רק אם אין clientId */}
+            {!clientId && linkType === "project" && (
               <div className="grid gap-2">
                 <Label htmlFor="projectId">פרויקט *</Label>
                 <Select
@@ -281,27 +450,49 @@ export function NewPaymentDialog({
 
             {/* הצעה */}
             {linkType === "quote" && (
-              <div className="grid gap-2">
-                <Label htmlFor="quoteId">הצעה *</Label>
-                <Select
-                  value={formData.quoteId}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, quoteId: value })
-                  }
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="בחר הצעה" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {quotes.map((quote) => (
-                      <SelectItem key={quote.id} value={quote.id}>
-                        {quote.quoteNumber} - {quote.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="quoteId">הצעה *</Label>
+                  <Select
+                    value={formData.quoteId}
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, quoteId: value })
+                      const quote = quotes.find(q => q.id === value)
+                      setSelectedQuote(quote || null)
+                      if (value) {
+                        fetchQuoteBalance(value)
+                      }
+                    }}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="בחר הצעה" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {quotes.map((quote) => (
+                        <SelectItem key={quote.id} value={quote.id}>
+                          {quote.quoteNumber} - {quote.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* הצגת יתרה */}
+                {quoteBalance !== null && selectedQuote && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">סכום הצעה:</span>
+                      <span className="font-medium">₪{selectedQuote.total?.toLocaleString('he-IL', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm mt-1">
+                      <span className="text-gray-600">יתרה לתשלום:</span>
+                      <span className={`font-bold ${quoteBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                        ₪{quoteBalance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* סכום */}
@@ -318,8 +509,68 @@ export function NewPaymentDialog({
                 min="0"
                 step="0.01"
                 required
+                className={exceedsBalance ? "border-red-500" : ""}
               />
+              {exceedsBalance && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm text-red-900 font-medium">
+                      ⚠️ הסכום עולה על היתרה
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="confirmExceed"
+                      checked={confirmExceed}
+                      onChange={(e) => setConfirmExceed(e.target.checked)}
+                      className="rounded"
+                    />
+                    <Label htmlFor="confirmExceed" className="text-sm text-red-700 cursor-pointer">
+                      אני יודע שאני חורג מהיתרה
+                    </Label>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* בחירת מערכת תשלום */}
+            {linkType === "quote" && formData.quoteId && (
+              <div className="grid gap-2">
+                <Label htmlFor="paymentProvider">מערכת תשלום *</Label>
+                <Select
+                  value={paymentProvider}
+                  onValueChange={(value: "payplus" | "invoice4u" | "manual") => {
+                    setPaymentProvider(value)
+                    // אם בוחרים תשלום ידני, נשנה את שיטת התשלום ל-OTHER (כי זה לא דרך מערכת סליקה)
+                    if (value === "manual" && formData.method === "CREDIT_CARD") {
+                      setFormData({ ...formData, method: "OTHER" })
+                    }
+                  }}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="payplus">💳 PayPlus - תשלום אונליין</SelectItem>
+                    <SelectItem value="invoice4u">💳 Invoice4U Clearing - תשלום אונליין</SelectItem>
+                    <SelectItem value="manual">✏️ תשלום ידני (ללא דף סליקה)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {paymentProvider === "manual" ? (
+                    <span className="text-orange-600">
+                      ⚠️ תשלום ידני רק יוצר רשומה במערכת. לא תועבר לדף סליקה. בחר את שיטת התשלום למטה.
+                    </span>
+                  ) : (
+                    <span className="text-green-600">
+                      ✓ לאחר לחיצה על "שמור" תועבר לדף הסליקה של {paymentProvider === "payplus" ? "PayPlus" : "Invoice4U"}
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
 
             {/* שיטת תשלום */}
             <div className="grid gap-2">
@@ -342,6 +593,11 @@ export function NewPaymentDialog({
                   <SelectItem value="OTHER">אחר</SelectItem>
                 </SelectContent>
               </Select>
+              {paymentProvider === "manual" && formData.method === "CREDIT_CARD" && (
+                <p className="text-xs text-orange-600">
+                  ⚠️ תשלום ידני בדרך כלל לא דרך כרטיס אשראי. בחר שיטת תשלום אחרת.
+                </p>
+              )}
             </div>
 
             {/* סטטוס */}

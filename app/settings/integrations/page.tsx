@@ -11,11 +11,11 @@ import { useToast } from "@/components/ui/use-toast"
 
 export default function IntegrationsPage() {
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState<"api" | "integrations" | "logs">("api")
+  const [activeTab, setActiveTab] = useState<"api" | "integrations" | "logs">("integrations")
   const [showApiKey, setShowApiKey] = useState(false)
   const [apiKey] = useState("crm_live_1234567890abcdefghijklmnop")
   
-  // Invoice4U Integration State
+  // Invoice4U Documents Integration State
   const [invoice4uEmail, setInvoice4uEmail] = useState("")
   const [invoice4uPassword, setInvoice4uPassword] = useState("")
   const [showInvoice4uPassword, setShowInvoice4uPassword] = useState(false)
@@ -23,6 +23,22 @@ export default function IntegrationsPage() {
   const [invoice4uLoading, setInvoice4uLoading] = useState(false)
   const [invoice4uTesting, setInvoice4uTesting] = useState(false)
   const [useProduction, setUseProduction] = useState(false)
+
+  // Invoice4U Clearing Integration State
+  const [invoice4uClearingApiKey, setInvoice4uClearingApiKey] = useState("")
+  const [invoice4uClearingEmail, setInvoice4uClearingEmail] = useState("")
+  const [invoice4uClearingPassword, setInvoice4uClearingPassword] = useState("")
+  const [showInvoice4uClearingPassword, setShowInvoice4uClearingPassword] = useState(false)
+  const [invoice4uClearingConnected, setInvoice4uClearingConnected] = useState(false)
+  const [invoice4uClearingLoading, setInvoice4uClearingLoading] = useState(false)
+  const [invoice4uClearingTesting, setInvoice4uClearingTesting] = useState(false)
+  const [invoice4uClearingUseProduction, setInvoice4uClearingUseProduction] = useState(false)
+  const [useClearingApiKey, setUseClearingApiKey] = useState(true) // מומלץ להשתמש ב-API Key
+
+  // State לניהול פתיחת/סגירת ההגדרות של כל אינטגרציה
+  const [showInvoice4uDocsSettings, setShowInvoice4uDocsSettings] = useState(false)
+  const [showInvoice4uClearingSettings, setShowInvoice4uClearingSettings] = useState(false)
+  const [showPayplusSettings, setShowPayplusSettings] = useState(false)
 
   // PayPlus Integration State
   const [payplusApiKey, setPayplusApiKey] = useState("")
@@ -82,6 +98,29 @@ export default function IntegrationsPage() {
           }
           if (config.useProduction) {
             setPayplusUseProduction(true)
+          }
+        }
+      })
+      .catch(console.error)
+  }, [])
+
+  // Load Invoice4U Clearing integration status
+  useEffect(() => {
+    fetch('/api/integrations/invoice4u/clearing')
+      .then(res => res.json())
+      .then(data => {
+        if (data.integration && data.integration.hasClearingConfig) {
+          setInvoice4uClearingConnected(true)
+          const config = data.integration.config || {}
+          if (config.clearingApiKey) {
+            setInvoice4uClearingApiKey(config.clearingApiKey)
+            setUseClearingApiKey(true)
+          } else if (config.clearingEmail) {
+            setInvoice4uClearingEmail(config.clearingEmail)
+            setUseClearingApiKey(false)
+          }
+          if (config.clearingUseProduction) {
+            setInvoice4uClearingUseProduction(true)
           }
         }
       })
@@ -369,8 +408,8 @@ export default function IntegrationsPage() {
         <div className="border-b border-gray-200">
           <div className="flex gap-6">
             {[
-              { key: "api", label: "API & Webhooks" },
               { key: "integrations", label: "אינטגרציות" },
+              { key: "api", label: "API & Webhooks" },
               { key: "logs", label: "לוגים" },
             ].map((tab) => (
               <button
@@ -489,32 +528,43 @@ X-API-KEY: ${apiKey}
 
         {/* Integrations Tab */}
         {activeTab === "integrations" && (
-          <div className="space-y-6">
-            {/* Invoice4U Integration */}
-            <Card className="shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <FileText className="w-6 h-6 text-blue-600" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Invoice4U Integration - Documents */}
+            <Card className="shadow-sm hover:shadow-md transition-shadow flex flex-col h-full">
+              <CardHeader className="pb-4">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="p-3 bg-blue-100 rounded-lg flex-shrink-0">
+                    <FileText className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-lg mb-1">Invoice4U - הוצאת מסמכים</CardTitle>
+                    <CardDescription className="text-sm">
+                      חבר את החשבון שלך ב-Invoice4U להוצאת הצעות מחיר, חשבוניות ומסמכים
+                    </CardDescription>
+                  </div>
                 </div>
-                <div>
-                  <CardTitle>Invoice4U - הוצאת מסמכים</CardTitle>
-                  <CardDescription>
-                    חבר את החשבון שלך ב-Invoice4U להוצאת הצעות מחיר, חשבוניות ומסמכים
-                  </CardDescription>
+                <div className="flex items-center justify-between pt-3 border-t">
+                  {invoice4uConnected ? (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="text-sm font-medium">מחובר</span>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">לא מחובר</div>
+                  )}
+                  <Button
+                    onClick={() => setShowInvoice4uDocsSettings(!showInvoice4uDocsSettings)}
+                    variant={showInvoice4uDocsSettings ? "outline" : "default"}
+                    size="sm"
+                    className={!showInvoice4uDocsSettings ? "prodify-gradient text-white border-0" : ""}
+                  >
+                    {showInvoice4uDocsSettings ? "הסתר" : invoice4uConnected ? "ערוך" : "הפעל"}
+                  </Button>
                 </div>
-              </div>
-              {invoice4uConnected && (
-                <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span className="text-sm font-medium">מחובר</span>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!invoice4uConnected ? (
+              </CardHeader>
+              {(showInvoice4uDocsSettings || invoice4uConnected) && (
+                <CardContent className="space-y-4 border-t pt-4 flex-1">
+                  {!invoice4uConnected ? (
               <>
                 <div>
                   <Label htmlFor="invoice4u-email">אימייל Invoice4U</Label>
@@ -591,7 +641,7 @@ X-API-KEY: ${apiKey}
                   <Button
                     onClick={connectInvoice4U}
                     disabled={invoice4uLoading || invoice4uTesting}
-                    className="flex-1 prodify-gradient text-white"
+                    className="flex-1 prodify-gradient text-white border-0"
                   >
                     {invoice4uLoading ? "מתחבר..." : "התחבר ל-Invoice4U"}
                   </Button>
@@ -627,34 +677,318 @@ X-API-KEY: ${apiKey}
                 </Button>
               </>
             )}
-          </CardContent>
-        </Card>
-
-        {/* PayPlus Integration */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <CreditCard className="w-6 h-6 text-orange-600" />
-                </div>
-                <div>
-                  <CardTitle>PayPlus - תשלומים</CardTitle>
-                  <CardDescription>
-                    חבר את החשבון שלך ב-PayPlus לעיבוד תשלומים מאובטחים
-                  </CardDescription>
-                </div>
-              </div>
-              {payplusConnected && (
-                <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span className="text-sm font-medium">מחובר</span>
-                </div>
+                </CardContent>
               )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!payplusConnected ? (
+            </Card>
+
+            {/* Invoice4U Clearing Integration */}
+            <Card className="shadow-sm hover:shadow-md transition-shadow flex flex-col h-full">
+              <CardHeader className="pb-4">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="p-3 bg-green-100 rounded-lg flex-shrink-0">
+                    <CreditCard className="w-6 h-6 text-green-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-lg mb-1">Invoice4U - תשלומים (Clearing)</CardTitle>
+                    <CardDescription className="text-sm">
+                      חבר את החשבון שלך ב-Invoice4U לביצוע תשלומים, שמירת כרטיסי אשראי ותשלומים חוזרים
+                    </CardDescription>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t">
+                  {invoice4uClearingConnected ? (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="text-sm font-medium">מחובר</span>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">לא מחובר</div>
+                  )}
+                  <Button
+                    onClick={() => setShowInvoice4uClearingSettings(!showInvoice4uClearingSettings)}
+                    variant={showInvoice4uClearingSettings ? "outline" : "default"}
+                    size="sm"
+                    className={!showInvoice4uClearingSettings ? "prodify-gradient text-white border-0" : ""}
+                  >
+                    {showInvoice4uClearingSettings ? "הסתר" : invoice4uClearingConnected ? "ערוך" : "הפעל"}
+                  </Button>
+                </div>
+              </CardHeader>
+              {(showInvoice4uClearingSettings || invoice4uClearingConnected) && (
+                <CardContent className="space-y-4 border-t pt-4 flex-1">
+                  {!invoice4uClearingConnected ? (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <input
+                    type="checkbox"
+                    id="use-clearing-api-key"
+                    checked={useClearingApiKey}
+                    onChange={(e) => setUseClearingApiKey(e.target.checked)}
+                    className="rounded"
+                  />
+                  <Label htmlFor="use-clearing-api-key" className="font-normal cursor-pointer">
+                    שימוש ב-API Key (מומלץ)
+                  </Label>
+                </div>
+
+                {useClearingApiKey ? (
+                  <>
+                    <div>
+                      <Label htmlFor="invoice4u-clearing-api-key">API Key</Label>
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                        <p className="text-xs text-yellow-900 font-medium mb-1">
+                          💡 איפה למצוא את ה-API Key?
+                        </p>
+                        <p className="text-xs text-yellow-700">
+                          התחבר ל-<a href="https://private.invoice4u.co.il" target="_blank" rel="noopener noreferrer" className="underline">private.invoice4u.co.il</a>, 
+                          לך ל-<strong>Settings → Account Settings → API</strong> ולחץ על <strong>Generate API Key</strong>
+                        </p>
+                      </div>
+                      <Input
+                        id="invoice4u-clearing-api-key"
+                        type="text"
+                        placeholder="הזן את ה-API Key מ-Invoice4U"
+                        value={invoice4uClearingApiKey}
+                        onChange={(e) => setInvoice4uClearingApiKey(e.target.value)}
+                        className="mt-2"
+                        dir="ltr"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <Label htmlFor="invoice4u-clearing-email">אימייל Invoice4U</Label>
+                      <Input
+                        id="invoice4u-clearing-email"
+                        type="email"
+                        placeholder="your-email@example.com"
+                        value={invoice4uClearingEmail}
+                        onChange={(e) => setInvoice4uClearingEmail(e.target.value)}
+                        className="mt-2"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="invoice4u-clearing-password">סיסמה</Label>
+                      <div className="flex gap-2 mt-2">
+                        <div className="flex-1 relative">
+                          <Input
+                            id="invoice4u-clearing-password"
+                            type={showInvoice4uClearingPassword ? "text" : "password"}
+                            placeholder="הזן את סיסמת Invoice4U"
+                            value={invoice4uClearingPassword}
+                            onChange={(e) => setInvoice4uClearingPassword(e.target.value)}
+                            className="pr-10"
+                            dir="ltr"
+                          />
+                          <button
+                            onClick={() => setShowInvoice4uClearingPassword(!showInvoice4uClearingPassword)}
+                            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          >
+                            {showInvoice4uClearingPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="clearing-use-production"
+                    checked={invoice4uClearingUseProduction}
+                    onChange={(e) => setInvoice4uClearingUseProduction(e.target.checked)}
+                    className="rounded"
+                  />
+                  <Label htmlFor="clearing-use-production" className="font-normal cursor-pointer">
+                    שימוש בסביבת ייצור (Production)
+                  </Label>
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-2">
+                  <p className="text-sm text-green-900">
+                    💡 <strong>מה זה Clearing APIs?</strong>
+                  </p>
+                  <p className="text-sm text-green-700">
+                    זהו API נפרד מהממשק למסמכים - משמש לביצוע תשלומים, שמירת כרטיסי אשראי ותשלומים חוזרים.
+                  </p>
+                  <ul className="text-xs text-green-600 mr-4 space-y-1">
+                    <li>• תשלומים רגילים (Regular Clearing)</li>
+                    <li>• שמירת כרטיסי אשראי (Tokenization)</li>
+                    <li>• תשלומים חוזרים (Standing Orders)</li>
+                    <li>• החזרות (Refunds)</li>
+                  </ul>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={async () => {
+                      setInvoice4uClearingTesting(true)
+                      try {
+                        const res = await fetch('/api/integrations/invoice4u/clearing', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            apiKey: useClearingApiKey ? invoice4uClearingApiKey : undefined,
+                            email: useClearingApiKey ? undefined : invoice4uClearingEmail,
+                            password: useClearingApiKey ? undefined : invoice4uClearingPassword,
+                            useProduction: invoice4uClearingUseProduction,
+                          }),
+                        })
+                        const data = await res.json()
+                        if (res.ok) {
+                          toast({ title: "✅ החיבור תקין!", description: "ההתחברות ל-Invoice4U Clearing עבדה בהצלחה" })
+                        } else {
+                          toast({ title: "❌ שגיאה", description: data.error || data.details, variant: "destructive" })
+                        }
+                      } catch (error) {
+                        toast({ title: "שגיאה", description: "אירעה שגיאה בבדיקת החיבור", variant: "destructive" })
+                      } finally {
+                        setInvoice4uClearingTesting(false)
+                      }
+                    }}
+                    disabled={invoice4uClearingTesting || invoice4uClearingLoading}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    {invoice4uClearingTesting ? "בודק..." : "🔍 בדוק חיבור"}
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (useClearingApiKey && !invoice4uClearingApiKey) {
+                        toast({ title: "שגיאה", description: "נא למלא את ה-API Key", variant: "destructive" })
+                        return
+                      }
+                      if (!useClearingApiKey && (!invoice4uClearingEmail || !invoice4uClearingPassword)) {
+                        toast({ title: "שגיאה", description: "נא למלא את כל השדות", variant: "destructive" })
+                        return
+                      }
+
+                      setInvoice4uClearingLoading(true)
+                      try {
+                        const res = await fetch('/api/integrations/invoice4u/clearing', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            apiKey: useClearingApiKey ? invoice4uClearingApiKey : undefined,
+                            email: useClearingApiKey ? undefined : invoice4uClearingEmail,
+                            password: useClearingApiKey ? undefined : invoice4uClearingPassword,
+                            useProduction: invoice4uClearingUseProduction,
+                          }),
+                        })
+
+                        const data = await res.json()
+
+                        if (res.ok) {
+                          setInvoice4uClearingConnected(true)
+                          toast({ title: "הצלחה!", description: "החיבור ל-Invoice4U Clearing הושלם בהצלחה" })
+                        } else {
+                          toast({ title: "שגיאה בהתחברות", description: data.error || data.details || "לא הצלחנו להתחבר", variant: "destructive" })
+                        }
+                      } catch (error) {
+                        toast({ title: "שגיאה", description: "אירעה שגיאה בחיבור ל-Invoice4U Clearing", variant: "destructive" })
+                      } finally {
+                        setInvoice4uClearingLoading(false)
+                      }
+                    }}
+                    disabled={invoice4uClearingLoading || invoice4uClearingTesting}
+                    className="flex-1 prodify-gradient text-white border-0"
+                  >
+                    {invoice4uClearingLoading ? "מתחבר..." : "התחבר ל-Invoice4U Clearing"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-sm text-green-900 font-medium">
+                    ✅ החשבון מחובר בהצלחה!
+                  </p>
+                  <p className="text-sm text-green-700 mt-1">
+                    כעת תוכל לבצע תשלומים דרך Invoice4U Clearing
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">תכונות זמינות:</h4>
+                  <ul className="text-sm text-gray-600 space-y-1 mr-4">
+                    <li>• תשלומים רגילים (Regular Clearing)</li>
+                    <li>• שמירת כרטיסי אשראי (Tokenization)</li>
+                    <li>• חיוב עם טוקן שמור (Charge with Token)</li>
+                    <li>• תשלומים חוזרים (Standing Orders)</li>
+                    <li>• החזרות (Refunds)</li>
+                    <li>• היסטוריית תשלומים (Clearing Logs)</li>
+                  </ul>
+                </div>
+
+                <Button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/integrations/invoice4u/clearing', {
+                        method: 'DELETE',
+                      })
+
+                      if (res.ok) {
+                        setInvoice4uClearingConnected(false)
+                        setInvoice4uClearingApiKey("")
+                        setInvoice4uClearingEmail("")
+                        setInvoice4uClearingPassword("")
+                        toast({ title: "הצלחה", description: "החיבור ל-Invoice4U Clearing נותק" })
+                      }
+                    } catch (error) {
+                      toast({ title: "שגיאה", description: "אירעה שגיאה בניתוק מ-Invoice4U Clearing", variant: "destructive" })
+                    }
+                  }}
+                  variant="outline"
+                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  נתק חיבור
+                </Button>
+              </>
+            )}
+                </CardContent>
+              )}
+            </Card>
+
+            {/* PayPlus Integration */}
+            <Card className="shadow-sm hover:shadow-md transition-shadow flex flex-col h-full">
+              <CardHeader className="pb-4">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="p-3 bg-orange-100 rounded-lg flex-shrink-0">
+                    <CreditCard className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-lg mb-1">PayPlus - תשלומים</CardTitle>
+                    <CardDescription className="text-sm">
+                      חבר את החשבון שלך ב-PayPlus לעיבוד תשלומים מאובטחים
+                    </CardDescription>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t">
+                  {payplusConnected ? (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="text-sm font-medium">מחובר</span>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">לא מחובר</div>
+                  )}
+                  <Button
+                    onClick={() => setShowPayplusSettings(!showPayplusSettings)}
+                    variant={showPayplusSettings ? "outline" : "default"}
+                    size="sm"
+                    className={!showPayplusSettings ? "prodify-gradient text-white border-0" : ""}
+                  >
+                    {showPayplusSettings ? "הסתר" : payplusConnected ? "ערוך" : "הפעל"}
+                  </Button>
+                </div>
+              </CardHeader>
+              {(showPayplusSettings || payplusConnected) && (
+                <CardContent className="space-y-4 border-t pt-4 flex-1">
+                  {!payplusConnected ? (
               <>
                 <div>
                   <Label htmlFor="payplus-api-key">API Key</Label>
@@ -745,7 +1079,7 @@ X-API-KEY: ${apiKey}
                   <Button
                     onClick={connectPayPlus}
                     disabled={payplusLoading || payplusTesting}
-                    className="flex-1 prodify-gradient text-white"
+                    className="flex-1 prodify-gradient text-white border-0"
                   >
                     {payplusLoading ? "מתחבר..." : "התחבר ל-PayPlus"}
                   </Button>
@@ -781,7 +1115,8 @@ X-API-KEY: ${apiKey}
                 </Button>
               </>
             )}
-          </CardContent>
+                </CardContent>
+              )}
             </Card>
           </div>
         )}

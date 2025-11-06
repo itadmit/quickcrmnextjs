@@ -11,6 +11,9 @@ import {
   XCircle,
   Clock,
   AlertCircle,
+  Trash2,
+  MoreVertical,
+  Edit,
 } from "lucide-react"
 import { AppLayout } from "@/components/AppLayout"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +28,15 @@ import {
 import { Input } from "@/components/ui/input"
 import { TableSkeleton } from "@/components/skeletons"
 import { NewPaymentDialog } from "@/components/dialogs/NewPaymentDialog"
+import { EditPaymentDialog } from "@/components/dialogs/EditPaymentDialog"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useToast } from "@/components/ui/use-toast"
 
 interface Payment {
   id: string
@@ -45,6 +57,7 @@ interface Payment {
     id: string
     quoteNumber: string
     title: string
+    total?: number
   } | null
 }
 
@@ -70,13 +83,54 @@ const methodConfig: Record<string, string> = {
 export default function PaymentsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const { toast } = useToast()
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
 
   const handlePaymentCreated = () => {
     fetchPayments()
+  }
+
+  const handleDeletePayment = async (paymentId: string) => {
+    // אישור לפני מחיקה
+    if (!confirm('האם אתה בטוח שברצונך למחוק את התשלום הזה?')) {
+      return
+    }
+
+    try {
+      setDeletingId(paymentId)
+      const res = await fetch(`/api/payments/${paymentId}`, {
+        method: 'DELETE',
+      })
+
+      if (res.ok) {
+        toast({
+          title: "הצלחה",
+          description: "התשלום נמחק בהצלחה",
+        })
+        fetchPayments()
+      } else {
+        const error = await res.json()
+        toast({
+          title: "שגיאה",
+          description: error.error || "לא ניתן למחוק את התשלום",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting payment:', error)
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה במחיקת התשלום",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   useEffect(() => {
@@ -201,135 +255,196 @@ export default function PaymentsPage() {
         </Card>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-4 mb-6">
-        <Filter className="w-5 h-5 text-gray-600" />
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">כל התשלומים</SelectItem>
-            <SelectItem value="PENDING">ממתינים</SelectItem>
-            <SelectItem value="PROCESSING">מעבדים</SelectItem>
-            <SelectItem value="COMPLETED">הושלמו</SelectItem>
-            <SelectItem value="FAILED">נכשלו</SelectItem>
-            <SelectItem value="REFUNDED">הוחזרו</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="flex-1 relative">
-          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <Input
-            placeholder="חיפוש לפי מספר עסקה, פרויקט, הצעה..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pr-10"
-          />
-        </div>
-      </div>
+      {/* Search and Filters */}
+      <Card className="mb-6">
+        <CardContent className="pt-6">
+          <div className="flex gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                placeholder="חיפוש לפי מספר עסקה, פרויקט, הצעה..."
+                className="pr-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">כל התשלומים</SelectItem>
+                <SelectItem value="PENDING">ממתינים</SelectItem>
+                <SelectItem value="PROCESSING">מעבדים</SelectItem>
+                <SelectItem value="COMPLETED">הושלמו</SelectItem>
+                <SelectItem value="FAILED">נכשלו</SelectItem>
+                <SelectItem value="REFUNDED">הוחזרו</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline">
+              <Filter className="w-4 h-4 ml-2" />
+              סינון
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Payments Table */}
       <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-hidden">
-            <table className="w-full table-fixed" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                    תאריך
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
-                    מספר עסקה
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    פרויקט/הצעה
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                    סכום
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                    שיטת תשלום
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                    סטטוס
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredPayments.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
-                      <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">אין תשלומים להצגה</p>
-                    </td>
+        <CardContent className="pt-6">
+          {filteredPayments.length === 0 ? (
+            <div className="text-center py-12">
+              <CreditCard className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {searchQuery ? "לא נמצאו תשלומים" : "אין תשלומים עדיין"}
+              </h3>
+              <p className="text-gray-500 mb-4">
+                {searchQuery
+                  ? "נסה לחפש במונח אחר"
+                  : "התחל על ידי יצירת תשלום חדש"}
+              </p>
+              {!searchQuery && <NewPaymentDialog onPaymentCreated={handlePaymentCreated} />}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-right py-3 px-4 font-medium text-gray-700">תאריך</th>
+                    <th className="text-right py-3 px-4 font-medium text-gray-700 w-64">מספר עסקה</th>
+                    <th className="text-right py-3 px-4 font-medium text-gray-700">פרויקט/הצעה</th>
+                    <th className="text-right py-3 px-4 font-medium text-gray-700">סכום</th>
+                    <th className="text-right py-3 px-4 font-medium text-gray-700">שיטת תשלום</th>
+                    <th className="text-right py-3 px-4 font-medium text-gray-700">סטטוס</th>
+                    <th className="text-right py-3 px-4 font-medium text-gray-700">פעולות</th>
                   </tr>
-                ) : (
-                  filteredPayments.map((payment) => {
+                </thead>
+                <tbody>
+                  {filteredPayments.map((payment) => {
                     const statusInfo = statusConfig[payment.status]
                     const StatusIcon = statusInfo.icon
+                    
+                    // חישוב יתרה אם יש הצעה - נשתמש בכל התשלומים (לא רק מסוננים)
+                    let quoteBalance: { quoteTotal: number; paidForQuote: number; balance: number } | null = null
+                    if (payment.quote?.total) {
+                      // מציאת כל התשלומים של ההצעה הזו מכל התשלומים (לא רק מסוננים)
+                      const quotePayments = payments.filter(
+                        p => p.quote?.id === payment.quote?.id && p.status === "COMPLETED"
+                      )
+                      const paidForQuote = quotePayments.reduce((sum, p) => sum + p.amount, 0)
+                      const balance = payment.quote.total - paidForQuote
+                      quoteBalance = {
+                        quoteTotal: payment.quote.total,
+                        paidForQuote,
+                        balance
+                      }
+                    }
+                    
                     return (
-                      <tr key={payment.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          {new Date(payment.createdAt).toLocaleDateString(
-                            "he-IL"
+                      <tr
+                        key={payment.id}
+                        className="border-b hover:bg-gray-50"
+                      >
+                        <td className="py-3 px-4">
+                          <span className="font-normal text-gray-900">
+                            {new Date(payment.createdAt).toLocaleDateString("he-IL")}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-normal text-gray-900">
+                            {payment.transactionId || payment.paymentReference || "-"}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {payment.project ? (
+                            <div>
+                              <div className="font-normal text-gray-900">
+                                {payment.project.name}
+                              </div>
+                              <div className="text-sm text-gray-600 font-light">פרויקט</div>
+                            </div>
+                          ) : payment.quote ? (
+                            <div>
+                              <div className="font-normal text-gray-900">
+                                {payment.quote.quoteNumber}
+                              </div>
+                              <div className="text-sm text-gray-600 font-light">
+                                {payment.quote.title}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
                           )}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-gray-900 break-words">
-                            {payment.transactionId || payment.paymentReference || "-"}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="break-words">
-                            {payment.project ? (
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {payment.project.name}
-                                </div>
-                                <div className="text-xs text-gray-500">פרויקט</div>
-                              </div>
-                            ) : payment.quote ? (
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {payment.quote.quoteNumber}
-                                </div>
-                                <div className="text-xs text-gray-500 break-words">
-                                  {payment.quote.title}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-sm font-bold text-gray-900">
+                        <td className="py-3 px-4">
+                          <span className="font-medium text-gray-900">
                             ₪{payment.amount.toLocaleString("he-IL", {
                               minimumFractionDigits: 2,
                             })}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {methodConfig[payment.method] || payment.method}
+                        <td className="py-3 px-4">
+                          <span className="font-normal text-gray-900">
+                            {methodConfig[payment.method] || payment.method}
+                          </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="py-3 px-4">
                           <Badge
-                            className={`${statusInfo.color} text-white`}
+                            className={`${statusInfo.color} text-white px-3 py-1.5 flex items-center gap-1.5 min-w-fit`}
                           >
-                            <StatusIcon className="w-3 h-3 ml-1" />
+                            <StatusIcon className="w-3 h-3" />
                             {statusInfo.label}
                           </Badge>
                         </td>
+                        <td className="py-3 px-4">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={deletingId === payment.id}
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" dir="rtl">
+                              <DropdownMenuItem
+                                onClick={() => setEditingPayment(payment)}
+                                className="flex items-center gap-2"
+                              >
+                                <Edit className="w-4 h-4 flex-shrink-0" />
+                                <span>ערוך</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleDeletePayment(payment.id)}
+                                className="text-red-600 flex items-center gap-2"
+                                disabled={deletingId === payment.id}
+                              >
+                                <Trash2 className="w-4 h-4 flex-shrink-0" />
+                                <span>{deletingId === payment.id ? "מוחק..." : "מחק"}</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
                       </tr>
                     )
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Edit Payment Dialog */}
+      {editingPayment && (
+        <EditPaymentDialog
+          payment={editingPayment}
+          open={!!editingPayment}
+          onOpenChange={(open) => !open && setEditingPayment(null)}
+          onPaymentUpdated={fetchPayments}
+        />
+      )}
     </AppLayout>
   )
 }

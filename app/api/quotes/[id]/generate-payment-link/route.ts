@@ -26,8 +26,10 @@ export async function POST(
       return NextResponse.json({ error: "Quote not found" }, { status: 404 })
     }
 
-    // בדיקה שההצעה כבר אושרה (יש חתימה)
-    if (!quote.signature) {
+    // בדיקה שההצעה כבר אושרה (יש חתימה) - רק אם amount לא נשלח (מקדמה אוטומטית)
+    // אם amount נשלח, זה אומר שמנסים לשלם תשלום ספציפי ולא מקדמה
+    const bodyAmount = body.amount
+    if (!bodyAmount && !quote.signature) {
       return NextResponse.json(
         { error: "Quote must be approved with signature first" },
         { status: 400 }
@@ -78,8 +80,8 @@ export async function POST(
     const successUrl = `${baseUrl}/quotes/${params.id}/payment/success`
     const failureUrl = `${baseUrl}/quotes/${params.id}/approve?error=payment_failed`
 
-    // חישוב מקדמה (40% מהסה"כ)
-    const depositAmount = quote.total * 0.4
+    // חישוב סכום תשלום - אם נשלח amount, נשתמש בו, אחרת מקדמה 40%
+    const depositAmount = bodyAmount ? parseFloat(bodyAmount) : quote.total * 0.4
 
     // יצירת payment link
     const paymentLinkResponse = await client.generatePaymentLink({

@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { DndProvider, useDrag, useDrop, useDragLayer } from "react-dnd"
+import { HTML5Backend, getEmptyImage } from "react-dnd-html5-backend"
 import { AppLayout } from "@/components/AppLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,6 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { TaskKitDialog } from "@/components/dialogs/TaskKitDialog"
 import { Invoice4UDialog } from "@/components/dialogs/Invoice4UDialog"
+import { NewPaymentDialog } from "@/components/dialogs/NewPaymentDialog"
+import { AssignTaskDialog } from "@/components/dialogs/AssignTaskDialog"
 import { useToast } from "@/components/ui/use-toast"
 import { 
   ArrowRight, 
@@ -27,7 +31,9 @@ import {
   FolderKanban,
   Coins,
   TrendingUp,
-  FileText
+  FileText,
+  GripVertical,
+  Trash2
 } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
@@ -103,7 +109,9 @@ interface Client {
     status: string
     priority: string
     dueDate: string | null
+    position: number
     project: { name: string } | null
+    assignee: { id: string; name: string } | null
   }>
   files?: Array<{
     id: string
@@ -118,6 +126,340 @@ interface Client {
   createdAt: string
 }
 
+// Custom Drag Layer - מציג את המשימה הנגררת
+const CustomDragLayer = ({ tasks }: { tasks: Client['tasks'] }) => {
+  const { itemType, isDragging, item, initialOffset, currentOffset } = useDragLayer((monitor) => ({
+    item: monitor.getItem(),
+    itemType: monitor.getItemType(),
+    initialOffset: monitor.getInitialSourceClientOffset(),
+    currentOffset: monitor.getSourceClientOffset(),
+    isDragging: monitor.isDragging(),
+  }))
+
+  if (!isDragging || itemType !== 'task') {
+    return null
+  }
+
+  const draggedTask = tasks.find(t => t.id === item.id)
+  if (!draggedTask) return null
+
+  if (!initialOffset || !currentOffset) {
+    return null
+  }
+
+  const x = currentOffset.x - 128 // מקזזים חצי רוחב (256/2)
+  const y = currentOffset.y - 48 // מקזזים חצי גובה (96/2)
+
+  return (
+    <div
+      className="fixed pointer-events-none z-50"
+      style={{
+        left: `${x}px`,
+        top: `${y}px`,
+      }}
+    >
+      <div className="rotate-2 opacity-95">
+        <Card className="shadow-2xl bg-white border-2 border-purple-400 w-64">
+          <CardContent className="p-3">
+            <div className="flex items-start gap-2">
+              <GripVertical className="w-4 h-4 mt-0.5 flex-shrink-0 text-purple-500" />
+              <div className="flex-1">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h4 className="font-medium text-sm text-gray-900">{draggedTask.title}</h4>
+                </div>
+                <div className="space-y-1 text-xs text-gray-600">
+                  {draggedTask.project && (
+                    <div>פרויקט: {draggedTask.project.name}</div>
+                  )}
+                  {draggedTask.assignee && (
+                    <div>אחראי: {draggedTask.assignee.name}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+// Task Card Component with Drag
+const TaskCard = ({ task, onStatusChange, onTaskAssigned, onDeleteTask }: { task: Client['tasks'][0], onStatusChange: (taskId: string, newStatus: string) => void, onTaskAssigned?: () => void, onDeleteTask?: (taskId: string) => void }) => {
+  // בדיקה שהאובייקט task תקין
+  if (!task || !task.id || typeof task !== 'object') {
+    console.error('Invalid task object:', task)
+    return null
+  }
+
+  const [{ isDragging }, drag, preview] = useDrag({
+    type: 'task',
+    item: { id: task.id, status: task.status },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  })
+
+  // השתמשת ב-empty image כדי שהדפדפן לא יציג preview ברירת מחדל
+  useEffect(() => {
+    preview(getEmptyImage(), { captureDraggingState: true })
+  }, [preview])
+
+  const isDone = task.status === 'DONE'
+
+  return (
+    <div
+      ref={drag}
+      className={`cursor-move transition-all duration-200 ${
+        isDragging 
+          ? 'opacity-30' 
+          : 'opacity-100 hover:shadow-md'
+      }`}
+    >
+      <Card className={`shadow-sm bg-white transition-all ${
+        isDragging 
+          ? 'border-2 border-purple-400 shadow-lg' 
+          : 'border border-gray-200'
+      }`}>
+        <CardContent className="p-3">
+          <div className="flex items-start gap-2">
+            <GripVertical className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+              isDragging ? 'text-purple-500' : 'text-gray-400'
+            }`} />
+            <div className="flex-1">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <h4 className={`font-medium text-sm ${isDone ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{task.title}</h4>
+                {isDone && onDeleteTask ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDeleteTask(task.id)
+                    }}
+                    className="p-1.5 rounded-lg bg-red-50 border-2 border-red-200 hover:bg-red-100 hover:border-red-300 transition-colors flex items-center justify-center text-red-600"
+                    title="מחק משימה"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <AssignTaskDialog
+                    taskId={task.id}
+                    taskTitle={task.title}
+                    currentAssigneeId={task.assignee?.id || null}
+                    currentAssigneeName={task.assignee?.name || null}
+                    onTaskAssigned={onTaskAssigned}
+                  />
+                )}
+              </div>
+              <div className={`space-y-1 text-xs ${isDone ? 'text-gray-400' : 'text-gray-600'}`}>
+                {task.project && (
+                  <div>פרויקט: {task.project.name}</div>
+                )}
+                {task.assignee && (
+                  <div>אחראי: {task.assignee.name}</div>
+                )}
+                {task.dueDate && (
+                  <div>יעד: {new Date(task.dueDate).toLocaleDateString('he-IL')}</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// Task Drop Zone Component (לפני כל משימה)
+const TaskDropZone = ({ 
+  onDrop, 
+  taskIndex,
+  onHover
+}: { 
+  onDrop: (taskId: string, newPosition: number) => void
+  taskIndex: number
+  onHover?: (index: number | null) => void
+}) => {
+  const [{ isOver, canDrop }, drop] = useDrop({
+    accept: 'task',
+    drop: (item: { id: string }) => {
+      onDrop(item.id, taskIndex)
+      onHover?.(null)
+    },
+    hover: (item, monitor) => {
+      if (monitor.isOver({ shallow: true })) {
+        onHover?.(taskIndex)
+      }
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+      canDrop: monitor.canDrop(),
+    }),
+  })
+
+  return (
+    <div
+      ref={drop}
+      className={`transition-all duration-300 ease-in-out ${
+        isOver 
+          ? 'h-12 bg-purple-100 border-2 border-dashed border-purple-400 rounded-lg my-2' 
+          : 'h-1 bg-transparent'
+      }`}
+      onMouseLeave={() => {
+        if (!isOver) {
+          onHover?.(null)
+        }
+      }}
+    >
+      {isOver && (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-purple-600 text-sm font-medium">שחרר כאן</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Task Column Component with Drop
+const TaskColumn = ({ 
+  status, 
+  tasks, 
+  onDrop, 
+  onReorder,
+  statusLabel,
+  onTaskAssigned,
+  onDeleteTask
+}: { 
+  status: string
+  tasks: Client['tasks']
+  onDrop: (taskId: string, newStatus: string) => void
+  onReorder: (taskId: string, newPosition: number, status: string) => void
+  statusLabel: string
+  onTaskAssigned?: () => void
+  onDeleteTask?: (taskId: string) => void
+}) => {
+  const [hoveredDropZone, setHoveredDropZone] = useState<number | null>(null)
+  
+  const [{ isOver }, drop] = useDrop({
+    accept: 'task',
+    drop: (item: { id: string, status: string }) => {
+      if (item.status !== status) {
+        onDrop(item.id, status)
+      }
+      setHoveredDropZone(null)
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+    }),
+  })
+
+  // Reset hover כאשר לא נגרר יותר
+  useEffect(() => {
+    if (!isOver && hoveredDropZone !== null) {
+      const timer = setTimeout(() => {
+        setHoveredDropZone(null)
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [isOver, hoveredDropZone])
+
+  // ודא ש-tasks הוא מערך
+  if (!Array.isArray(tasks)) {
+    console.error('Tasks is not an array in TaskColumn:', tasks, typeof tasks)
+    return (
+      <div className="h-full">
+        <Card className="shadow-sm bg-gray-50 h-full">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{statusLabel}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center text-gray-400 py-8 text-sm">שגיאה בטעינת משימות</div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const filteredTasks = tasks
+    .filter(t => t && typeof t === 'object' && t.id && t.status === status)
+    .map(t => {
+      // ודא שהאובייקט תקין
+      if (!t.id || !t.title) {
+        console.error('Invalid task object:', t)
+        return null
+      }
+      return t
+    })
+    .filter(Boolean) as Client['tasks']
+
+  // מיון לפי position
+  const sortedTasks = [...filteredTasks].sort((a, b) => (a.position || 0) - (b.position || 0))
+
+  return (
+    <div ref={drop} className="h-full">
+      <Card className={`shadow-sm h-full transition-all duration-200 ${
+        isOver 
+          ? 'bg-purple-50 border-2 border-purple-400 border-dashed' 
+          : 'bg-gray-50 border border-gray-200'
+      }`}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className={`text-base ${isOver ? 'text-purple-700' : ''}`}>
+              {statusLabel}
+            </CardTitle>
+            <span className="text-sm text-gray-500">{Array.isArray(sortedTasks) ? sortedTasks.length : 0}</span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-0 min-h-[200px]">
+          {isOver && sortedTasks.length === 0 && (
+            <div className="text-center text-purple-600 py-8 text-sm font-medium border-2 border-purple-300 border-dashed rounded-lg bg-purple-50">
+              שחרר כאן כדי להעביר
+            </div>
+          )}
+          {!isOver && (!sortedTasks || sortedTasks.length === 0) ? (
+            <div className="text-center text-gray-400 py-8 text-sm">
+              אין משימות
+            </div>
+          ) : (
+            Array.isArray(sortedTasks) ? sortedTasks.map((task, index) => {
+              if (!task || typeof task !== 'object' || !task.id) {
+                console.error('Invalid task in sortedTasks:', task)
+                return null
+              }
+              // אם יש drop zone פעיל לפני המשימה הזו (index > hoveredDropZone), המשימה תדחף למטה
+              // אם drop zone הוא בדיוק ב-index הזה, לא נדחוף (כי המשימה תיכנס שם)
+              const shouldPushDown = hoveredDropZone !== null && index > hoveredDropZone
+              return (
+                <div key={task.id} className="transition-all duration-300 ease-in-out">
+                  <TaskDropZone 
+                    onDrop={(taskId, newPosition) => onReorder(taskId, newPosition, status)} 
+                    taskIndex={index}
+                    onHover={setHoveredDropZone}
+                  />
+                  <div 
+                    className={`py-1.5 transition-all duration-300 ease-in-out ${
+                      shouldPushDown ? 'translate-y-14' : 'translate-y-0'
+                    }`}
+                  >
+                    <TaskCard task={task} onStatusChange={onDrop} onTaskAssigned={onTaskAssigned} onDeleteTask={onDeleteTask} />
+                  </div>
+                </div>
+              )
+            }).filter(Boolean) : null
+          )}
+          {/* Drop zone בסוף */}
+          {sortedTasks.length > 0 && (
+            <TaskDropZone 
+              onDrop={(taskId, newPosition) => onReorder(taskId, newPosition, status)} 
+              taskIndex={sortedTasks.length}
+              onHover={setHoveredDropZone}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 export default function ClientDetailPage() {
   const params = useParams()
   const { toast } = useToast()
@@ -126,6 +468,9 @@ export default function ClientDetailPage() {
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
+  const [editingProjectName, setEditingProjectName] = useState<string>("")
 
   useEffect(() => {
     fetchClient()
@@ -180,6 +525,29 @@ export default function ClientDetailPage() {
       const response = await fetch(`/api/clients/${params.id}`)
       if (response.ok) {
         const data = await response.json()
+        // ודא ש-tasks הוא מערך וכל task הוא אובייקט תקין
+        if (data) {
+          if (!Array.isArray(data.tasks)) {
+            console.error('Tasks is not an array from API:', data.tasks, typeof data.tasks)
+            data.tasks = []
+          } else {
+            // ודא שכל task הוא אובייקט תקין
+            data.tasks = data.tasks
+              .filter(t => 
+                t && 
+                typeof t === 'object' && 
+                t.id && 
+                t.title &&
+                t.status &&
+                t.priority &&
+                (t.dueDate === null || typeof t.dueDate === 'string')
+              )
+              .map(t => ({
+                ...t,
+                position: typeof t.position === 'number' ? t.position : 0
+              }))
+          }
+        }
         setClient(data)
       } else {
         toast({
@@ -200,13 +568,301 @@ export default function ClientDetailPage() {
     }
   }
 
-  const handleTasksCreated = (tasks: string[]) => {
-    toast({
-      title: "המשימות נוצרו בהצלחה!",
-      description: `${tasks.length} משימות חדשות נוספו לפרויקט`,
-    })
-    // Refresh client data
-    fetchClient()
+  const handleTasksCreated = async (taskTitles: string[]) => {
+    if (!taskTitles || taskTitles.length === 0) {
+      toast({
+        title: "שגיאה",
+        description: "לא נבחרו משימות",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!client) {
+      toast({
+        title: "שגיאה",
+        description: "לא ניתן לטעון פרטי לקוח",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setLoading(true)
+      
+      // מחפש פרויקט קיים של הלקוח (אם יש)
+      let projectId: string | undefined = undefined
+      if (client.projects && client.projects.length > 0) {
+        // לוקח את הפרויקט האחרון או הראשון
+        projectId = client.projects[0].id
+      }
+
+      // יוצר את כל המשימות
+      const createdTasks = []
+      for (const title of taskTitles) {
+        if (!title.trim()) continue // דילוג על משימות ריקות
+        
+        const response = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title.trim(),
+            description: null,
+            clientId: client.id,
+            projectId: projectId || null,
+            priority: 'NORMAL',
+            status: 'TODO',
+            skipEmail: true, // לא לשלוח מיילים בעת טעינת תבנית
+          }),
+        })
+
+        if (response.ok) {
+          const task = await response.json()
+          createdTasks.push(task)
+        } else {
+          console.error(`Failed to create task: ${title}`)
+        }
+      }
+
+      if (createdTasks.length > 0) {
+        toast({
+          title: "המשימות נוצרו בהצלחה!",
+          description: `${createdTasks.length} משימות חדשות נוספו${projectId ? ' לפרויקט' : ' ללקוח'}`,
+        })
+        // רענון נתוני הלקוח
+        await fetchClient()
+      } else {
+        toast({
+          title: "שגיאה",
+          description: "לא ניתן היה ליצור את המשימות",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error creating tasks:', error)
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה ביצירת המשימות",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleTaskStatusChange = async (taskId: string, newStatus: string) => {
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: taskId,
+          status: newStatus,
+        }),
+      })
+
+      if (response.ok) {
+        // עדכון מקומי של הסטטוס
+        if (client) {
+          setClient({
+            ...client,
+            tasks: client.tasks.map(task =>
+              task.id === taskId ? { ...task, status: newStatus } : task
+            ),
+          })
+        }
+      } else {
+        throw new Error('Failed to update task')
+      }
+    } catch (error) {
+      console.error('Error updating task status:', error)
+      toast({
+        title: "שגיאה",
+        description: "לא ניתן היה לעדכן את סטטוס המשימה",
+        variant: "destructive",
+      })
+      // רענון נתונים במקרה של שגיאה
+      await fetchClient()
+    }
+  }
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('האם אתה בטוח שברצונך למחוק את המשימה?')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        toast({
+          title: "משימה נמחקה",
+          description: "המשימה נמחקה בהצלחה",
+        })
+        // רענון נתוני הלקוח
+        await fetchClient()
+      } else {
+        toast({
+          title: "שגיאה",
+          description: "לא ניתן למחוק את המשימה",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error)
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה במחיקת המשימה",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleTaskReorder = async (taskId: string, newPosition: number, status: string) => {
+    if (!client) return
+
+    try {
+      // מציאת המשימה הנגררת
+      const draggedTask = client.tasks.find(t => t.id === taskId)
+      if (!draggedTask) return
+
+      // אם המשימה לא באותו סטטוס, נשנה את הסטטוס קודם
+      if (draggedTask.status !== status) {
+        await handleTaskStatusChange(taskId, status)
+        // רענון נתונים אחרי שינוי סטטוס
+        await fetchClient()
+        return
+      }
+
+      // קבלת כל המשימות באותו סטטוס, ממוינות לפי position
+      const tasksInStatus = client.tasks
+        .filter(t => t.status === status && t.id !== taskId)
+        .sort((a, b) => (a.position || 0) - (b.position || 0))
+
+      // חישוב position חדש - נשתמש במספרים עוקבים
+      const newPositions: Array<{ id: string; position: number }> = []
+      
+      // הוספת המשימות לפני המיקום החדש
+      for (let i = 0; i < newPosition; i++) {
+        if (tasksInStatus[i]) {
+          newPositions.push({ id: tasksInStatus[i].id, position: i })
+        }
+      }
+      
+      // הוספת המשימה הנגררת במיקום החדש
+      newPositions.push({ id: taskId, position: newPosition })
+      
+      // הוספת המשימות אחרי המיקום החדש
+      for (let i = newPosition; i < tasksInStatus.length; i++) {
+        if (tasksInStatus[i]) {
+          newPositions.push({ id: tasksInStatus[i].id, position: i + 1 })
+        }
+      }
+
+      // עדכון כל המשימות
+      await Promise.all(
+        newPositions.map(({ id, position }) =>
+          fetch('/api/tasks', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id,
+              position,
+            }),
+          })
+        )
+      )
+
+      // עדכון מקומי
+      await fetchClient()
+    } catch (error) {
+      console.error('Error reordering tasks:', error)
+      toast({
+        title: "שגיאה",
+        description: "לא ניתן היה לשנות את סדר המשימות",
+        variant: "destructive",
+      })
+      await fetchClient()
+    }
+  }
+
+  const handleEditProjectName = async (projectId: string, newName: string) => {
+    if (!newName.trim()) {
+      toast({
+        title: "שגיאה",
+        description: "שם הפרויקט לא יכול להיות ריק",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() }),
+      })
+
+      if (response.ok) {
+        toast({
+          title: "הצלחה",
+          description: "שם הפרויקט עודכן בהצלחה",
+        })
+        setEditingProjectId(null)
+        // רענון נתוני הלקוח
+        await fetchClient()
+      } else {
+        throw new Error('Failed to update project')
+      }
+    } catch (error) {
+      console.error('Error updating project name:', error)
+      toast({
+        title: "שגיאה",
+        description: "לא ניתן היה לעדכן את שם הפרויקט",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeletePayment = async (paymentId: string) => {
+    // אישור לפני מחיקה
+    if (!confirm('האם אתה בטוח שברצונך למחוק את התשלום הזה?')) {
+      return
+    }
+
+    try {
+      setDeletingPaymentId(paymentId)
+      const res = await fetch(`/api/payments/${paymentId}`, {
+        method: 'DELETE',
+      })
+
+      if (res.ok) {
+        toast({
+          title: "הצלחה",
+          description: "התשלום נמחק בהצלחה",
+        })
+        // רענון נתוני הלקוח
+        await fetchClient()
+      } else {
+        const error = await res.json()
+        toast({
+          title: "שגיאה",
+          description: error.error || "לא ניתן למחוק את התשלום",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting payment:', error)
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה במחיקת התשלום",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingPaymentId(null)
+    }
   }
 
   if (loading) {
@@ -259,8 +915,8 @@ export default function ClientDetailPage() {
     )
   }
 
-  const budgets = client.budgets
-  const tasks = client.tasks
+  const budgets = Array.isArray(client?.budgets) ? client.budgets : []
+  const tasks = Array.isArray(client?.tasks) ? client.tasks.filter(t => t && typeof t === 'object' && t.id) : []
   
   // איסוף כל התשלומים מכל הפרויקטים + תשלומים ישירים
   const projectPayments = client.projects.flatMap(project => 
@@ -319,15 +975,22 @@ export default function ClientDetailPage() {
     }
   })
   
-  // חישוב יתרה כוללת (רק עבור הצעות שיש להן תשלומים)
-  // אם יש כמה הצעות, נחשב את היתרה רק עבור הצעות שיש להן תשלומים
+  // חישוב יתרה כוללת
+  // כולל סכום כל ההצעות שיש להן תשלומים
   const totalQuoteAmount = quoteBalances.length > 0 
     ? quoteBalances.reduce((sum, q) => sum + q.quoteTotal, 0)
     : 0
+  
+  // סכום כולל של כל התשלומים (כולל תשלומים ישירים ופרויקטים)
   const totalPaidForQuotes = quoteBalances.length > 0
     ? quoteBalances.reduce((sum, q) => sum + q.paidForQuote, 0)
     : totalPaid
+  
+  // חישוב יתרה - אם יש הצעות, נחשב לפי ההצעות, אחרת 0
   const totalBalance = totalQuoteAmount > 0 ? totalQuoteAmount - totalPaidForQuotes : 0
+  
+  // אם אין תשלומים כלל, לא נציג את כרטיס הסיכום
+  const hasAnyPayments = allPayments.length > 0
   
   // יצירת ציר זמן מתאריכים אמיתיים
   const timeline = [
@@ -450,7 +1113,7 @@ export default function ClientDetailPage() {
                 <div>
                   <div className="text-sm text-gray-500 mb-1">משימות פתוחות</div>
                   <div className="text-3xl font-bold text-orange-600">
-                    {tasks.filter(t => t.status !== "DONE").length}
+                    {Array.isArray(tasks) ? tasks.filter(t => t && t.status !== "DONE").length : 0}
                   </div>
                 </div>
                 <CheckCircle2 className="w-8 h-8 text-orange-600" />
@@ -586,7 +1249,7 @@ export default function ClientDetailPage() {
                               ></div>
                             </div>
                             <div className="flex items-center justify-between text-sm text-gray-600">
-                              <span>{project.completedTasks}/{project.tasks} משימות</span>
+                              <span>{project.completedTasks}/{project.tasksCount} משימות</span>
                               <span>{(project.budget / 1000).toFixed(0)}K ₪</span>
                             </div>
                           </div>
@@ -627,9 +1290,62 @@ export default function ClientDetailPage() {
                 <CardContent>
                   <div className="space-y-4">
                     {projects.map((project) => (
-                      <div key={project.id} className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                      <div key={project.id} className="p-4 border rounded-lg hover:bg-gray-50">
                         <div className="flex items-center justify-between mb-3">
-                          <h3 className="font-medium text-gray-900">{project.name}</h3>
+                          <div className="flex-1 flex items-center gap-2">
+                            {editingProjectId === project.id ? (
+                              <div className="flex items-center gap-2 flex-1">
+                                <Input
+                                  value={editingProjectName}
+                                  onChange={(e) => setEditingProjectName(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      handleEditProjectName(project.id, editingProjectName)
+                                    } else if (e.key === 'Escape') {
+                                      setEditingProjectId(null)
+                                      setEditingProjectName("")
+                                    }
+                                  }}
+                                  className="flex-1"
+                                  autoFocus
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEditProjectName(project.id, editingProjectName)}
+                                >
+                                  שמור
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setEditingProjectId(null)
+                                    setEditingProjectName("")
+                                  }}
+                                >
+                                  ביטול
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                <h3 className="font-medium text-gray-900">{project.name}</h3>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setEditingProjectId(project.id)
+                                    setEditingProjectName(project.name)
+                                  }}
+                                  title="ערוך שם פרויקט"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
                           <span className={`text-xs px-2 py-1 rounded ${statusColors[project.status]}`}>
                             {statusLabels[project.status]}
                           </span>
@@ -656,7 +1372,7 @@ export default function ClientDetailPage() {
                             ></div>
                           </div>
                           <div className="flex items-center justify-between text-sm text-gray-600">
-                            <span>{project.completedTasks}/{project.tasks} משימות הושלמו</span>
+                            <span>{project.completedTasks}/{project.tasksCount} משימות הושלמו</span>
                             <span className="font-medium text-green-600">{(project.budget / 1000).toFixed(0)}K ₪</span>
                           </div>
                         </div>
@@ -667,9 +1383,10 @@ export default function ClientDetailPage() {
               </Card>
             )}
 
-            {/* Tasks Tab - Kanban Style */}
+            {/* Tasks Tab - Kanban Style with Drag and Drop */}
             {activeTab === "tasks" && (
-              <>
+              <DndProvider backend={HTML5Backend}>
+                <CustomDragLayer tasks={tasks} />
                 <div className="mb-4 flex justify-end">
                   <TaskKitDialog 
                     clientId={client.id} 
@@ -677,47 +1394,42 @@ export default function ClientDetailPage() {
                   />
                 </div>
                 <div className="grid grid-cols-3 gap-4">
-                  {["TODO", "IN_PROGRESS", "DONE"].map((status) => (
-                    <Card key={status} className="shadow-sm bg-gray-50">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-base">
-                            {status === "TODO" && "לביצוע"}
-                            {status === "IN_PROGRESS" && "בתהליך"}
-                            {status === "DONE" && "הושלם"}
-                          </CardTitle>
-                          <span className="text-sm text-gray-500">
-                            {tasks.filter(t => t.status === status).length}
-                          </span>
-                        </div>
-                      </CardHeader>
-                    <CardContent className="space-y-3">
-                      {tasks
-                        .filter(t => t.status === status)
-                        .map((task) => (
-                          <Card key={task.id} className="shadow-sm bg-white">
-                            <CardContent className="p-3">
-                              <h4 className="font-medium text-sm text-gray-900 mb-2">{task.title}</h4>
-                              <div className="space-y-1 text-xs text-gray-600">
-                                <div>פרויקט: {task.project}</div>
-                                <div>אחראי: {task.assignee}</div>
-                                <div>יעד: {task.dueDate}</div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                    </CardContent>
-                  </Card>
-                ))}
+                  <TaskColumn
+                    status="TODO"
+                    tasks={tasks}
+                    onDrop={handleTaskStatusChange}
+                    onReorder={handleTaskReorder}
+                    statusLabel="לביצוע"
+                    onTaskAssigned={fetchClient}
+                    onDeleteTask={handleDeleteTask}
+                  />
+                  <TaskColumn
+                    status="IN_PROGRESS"
+                    tasks={tasks}
+                    onDrop={handleTaskStatusChange}
+                    onReorder={handleTaskReorder}
+                    statusLabel="בתהליך"
+                    onTaskAssigned={fetchClient}
+                    onDeleteTask={handleDeleteTask}
+                  />
+                  <TaskColumn
+                    status="DONE"
+                    tasks={tasks}
+                    onDrop={handleTaskStatusChange}
+                    onReorder={handleTaskReorder}
+                    statusLabel="הושלם"
+                    onTaskAssigned={fetchClient}
+                    onDeleteTask={handleDeleteTask}
+                  />
                 </div>
-              </>
+              </DndProvider>
             )}
 
             {/* Payments Tab */}
             {activeTab === "payments" && (
               <>
                 {/* סיכום תשלומים */}
-                {quoteBalances.length > 0 && (
+                {hasAnyPayments && (
                   <Card className="shadow-sm mb-6">
                     <CardHeader>
                       <CardTitle>סיכום תשלומים</CardTitle>
@@ -727,7 +1439,10 @@ export default function ClientDetailPage() {
                         <div className="text-center p-4 bg-blue-50 rounded-lg">
                           <div className="text-sm text-gray-600 mb-1">סכום כל הפרויקט</div>
                           <div className="text-2xl font-bold text-blue-600">
-                            ₪{totalQuoteAmount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
+                            {totalQuoteAmount > 0 
+                              ? `₪${totalQuoteAmount.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`
+                              : <span className="text-gray-400">₪0.00</span>
+                            }
                           </div>
                         </div>
                         <div className="text-center p-4 bg-green-50 rounded-lg">
@@ -753,7 +1468,25 @@ export default function ClientDetailPage() {
 
                 <Card className="shadow-sm">
                   <CardHeader>
-                    <CardTitle>תשלומים ({allPayments.length})</CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>תשלומים ({allPayments.length})</CardTitle>
+                      <NewPaymentDialog
+                        clientId={client.id}
+                        triggerButton={
+                          <Button size="sm" className="prodify-gradient text-white border-0">
+                            <Plus className="w-4 h-4 ml-2" />
+                            תשלום חדש
+                          </Button>
+                        }
+                        onPaymentCreated={() => {
+                          fetchClient()
+                          toast({
+                            title: "תשלום נוצר",
+                            description: "התשלום נוסף בהצלחה",
+                          })
+                        }}
+                      />
+                    </div>
                   </CardHeader>
                   <CardContent>
                   {allPayments.length === 0 ? (
@@ -770,8 +1503,20 @@ export default function ClientDetailPage() {
                           : null
                         
                         return (
-                        <div key={payment.id} className="p-4 border rounded-lg hover:bg-gray-50">
-                          <div className="flex items-center justify-between mb-2">
+                        <div key={payment.id} className="pr-3 pl-2 py-4 border rounded-lg hover:bg-gray-50 relative">
+                          {/* כפתור מחיקה - שמאל למעלה (ימין למעלה ב-RTL) */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="absolute top-2 right-2 h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleDeletePayment(payment.id)}
+                            disabled={deletingPaymentId === payment.id}
+                            title="מחק תשלום"
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                          
+                          <div className="flex items-center justify-between mb-2 pr-10">
                             <div className="flex-1">
                               <h4 className="font-medium text-gray-900">
                                 {payment.description || `תשלום #${payment.transactionId || payment.id.slice(-6)}`}
@@ -782,17 +1527,7 @@ export default function ClientDetailPage() {
                               </div>
                               {quoteBalance && (
                                 <div className="text-xs text-gray-500 mt-1">
-                                  סכום הצעה: ₪{quoteBalance.quoteTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 })} • 
-                                  שולם: ₪{quoteBalance.paidForQuote.toLocaleString('he-IL', { minimumFractionDigits: 2 })} • 
-                                  {quoteBalance.balance > 0 ? (
-                                    <span className="text-orange-600 font-semibold">
-                                      יתרה: ₪{quoteBalance.balance.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
-                                    </span>
-                                  ) : (
-                                    <span className="text-green-600 font-semibold">
-                                      שולם במלואו
-                                    </span>
-                                  )}
+                                  סכום הצעה: ₪{quoteBalance.quoteTotal.toLocaleString('he-IL', { minimumFractionDigits: 2 })}
                                 </div>
                               )}
                               <div className="text-xs text-gray-500 mt-1">
@@ -823,6 +1558,150 @@ export default function ClientDetailPage() {
                                  payment.status === 'PROCESSING' ? 'מעבד' :
                                  payment.status}
                               </span>
+                              {payment.status === 'PENDING' && payment.quote && (
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="prodify-gradient text-white border-0"
+                                    onClick={async () => {
+                                      try {
+                                        // בדיקה איזה אינטגרציות זמינות
+                                        const integrationsRes = await fetch('/api/integrations')
+                                        let payplusAvailable = false
+                                        let invoice4uClearingAvailable = false
+                                        
+                                        if (integrationsRes.ok) {
+                                          const integrations = await integrationsRes.json()
+                                          payplusAvailable = integrations.some((i: any) => i.type === 'PAYPLUS' && i.isActive)
+                                          invoice4uClearingAvailable = integrations.some((i: any) => i.type === 'INVOICE4U' && i.isActive)
+                                        }
+                                        
+                                        // קבלת clientId מההצעה
+                                        let invoice4uClientId = params.id
+                                        if (payment.quote) {
+                                          try {
+                                            const quoteRes = await fetch(`/api/quotes/${payment.quote.id}`)
+                                            if (quoteRes.ok) {
+                                              const quoteData = await quoteRes.json()
+                                              // אם יש leadId, ננסה למצוא את הלקוח
+                                              if (quoteData.leadId) {
+                                                const leadRes = await fetch(`/api/leads/${quoteData.leadId}`)
+                                                if (leadRes.ok) {
+                                                  const leadData = await leadRes.json()
+                                                  invoice4uClientId = leadData.clientId || params.id
+                                                }
+                                              }
+                                            }
+                                          } catch (e) {
+                                            console.error("Error fetching quote:", e)
+                                          }
+                                        }
+                                        
+                                        // ניסיון Invoice4U Clearing קודם (אם זמין)
+                                        if (invoice4uClearingAvailable) {
+                                          const invoice4uRes = await fetch(`/api/integrations/invoice4u/clearing/process`, {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                              quoteId: payment.quote.id,
+                                              clientId: invoice4uClientId,
+                                              amount: payment.amount.toString(),
+                                              description: payment.description || `תשלום עבור הצעה ${payment.quote.quoteNumber}`,
+                                              paymentType: "regular",
+                                            }),
+                                          })
+                                          
+                                          if (invoice4uRes.ok) {
+                                            const data = await invoice4uRes.json()
+                                            if (data.clearingUrl) {
+                                              window.location.href = data.clearingUrl
+                                              return
+                                            } else {
+                                              console.error("Invoice4U response missing clearingUrl:", data)
+                                            }
+                                          } else {
+                                            const invoice4uError = await invoice4uRes.json().catch(() => ({}))
+                                            console.error("Invoice4U error:", invoice4uError)
+                                            
+                                            // אם Invoice4U נכשל, ננסה PayPlus (אם זמין)
+                                            if (payplusAvailable) {
+                                              const payplusRes = await fetch(`/api/quotes/${payment.quote.id}/generate-payment-link`, {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({
+                                                  currency: "ILS",
+                                                  amount: payment.amount,
+                                                }),
+                                              })
+                                              
+                                              if (payplusRes.ok) {
+                                                const payplusData = await payplusRes.json()
+                                                if (payplusData.paymentLink) {
+                                                  window.location.href = payplusData.paymentLink
+                                                  return
+                                                }
+                                              }
+                                            }
+                                            
+                                            toast({
+                                              title: "שגיאה ב-Invoice4U Clearing",
+                                              description: invoice4uError.error || invoice4uError.details || "לא ניתן ליצור קישור תשלום דרך Invoice4U. נסה שוב או בדוק את הגדרות האינטגרציה.",
+                                              variant: "destructive",
+                                            })
+                                            return
+                                          }
+                                        }
+                                        
+                                        // אם Invoice4U לא זמין, ננסה PayPlus
+                                        if (payplusAvailable) {
+                                          const payplusRes = await fetch(`/api/quotes/${payment.quote.id}/generate-payment-link`, {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                              currency: "ILS",
+                                              amount: payment.amount,
+                                            }),
+                                          })
+                                          
+                                          if (payplusRes.ok) {
+                                            const data = await payplusRes.json()
+                                            if (data.paymentLink) {
+                                              window.location.href = data.paymentLink
+                                              return
+                                            }
+                                          } else {
+                                            const errorData = await payplusRes.json().catch(() => ({}))
+                                            console.error("PayPlus error:", errorData)
+                                            toast({
+                                              title: "שגיאה",
+                                              description: errorData.error || "לא ניתן ליצור קישור תשלום דרך PayPlus",
+                                              variant: "destructive",
+                                            })
+                                            return
+                                          }
+                                        }
+                                        
+                                        // אם אין אינטגרציות זמינות
+                                        toast({
+                                          title: "אין אינטגרציות זמינות",
+                                          description: "אנא הגדר PayPlus או Invoice4U Clearing בדף האינטגרציות לפני ניסיון תשלום.",
+                                          variant: "destructive",
+                                        })
+                                      } catch (error: any) {
+                                        console.error("Error processing payment:", error)
+                                        toast({
+                                          title: "שגיאה",
+                                          description: error.message || "אירעה שגיאה ביצירת קישור תשלום",
+                                          variant: "destructive",
+                                        })
+                                      }
+                                    }}
+                                  >
+                                    💳 שלם עכשיו
+                                  </Button>
+                                </div>
+                              )}
                               {payment.paymentReference && (
                                 <span className="text-xs text-gray-500">
                                   אישור: {payment.paymentReference}

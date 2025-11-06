@@ -176,11 +176,19 @@ export async function POST(req: NextRequest) {
             }
           } else {
             // יצירת פרויקט חדש - עם השם מההצעה והתקציב מההצעה
+            // הסרת "הצעת מחיר - " מהתחלה אם קיים
+            let projectName = quote.title || `פרויקט מ-${quote.quoteNumber}`
+            if (projectName.startsWith('הצעת מחיר - ')) {
+              projectName = projectName.replace(/^הצעת מחיר - /, '')
+            } else if (projectName.startsWith('הצעת מחיר ')) {
+              projectName = projectName.replace(/^הצעת מחיר /, '')
+            }
+            
             const project = await prisma.project.create({
               data: {
                 companyId: quote.companyId,
                 clientId: clientId,
-                name: quote.title || `פרויקט מ-${quote.quoteNumber}`,
+                name: projectName,
                 description: quote.description,
                 status: "PLANNING",
                 budget: quote.total,
@@ -238,11 +246,19 @@ export async function POST(req: NextRequest) {
           console.log(`Found project ${projectId} for client ${lead.clientId} as fallback`)
         } else {
           // יצירת פרויקט חדש כגיבוי
+          // הסרת "הצעת מחיר - " מהתחלה אם קיים
+          let projectName = quote.title || `פרויקט מ-${quote.quoteNumber}`
+          if (projectName.startsWith('הצעת מחיר - ')) {
+            projectName = projectName.replace(/^הצעת מחיר - /, '')
+          } else if (projectName.startsWith('הצעת מחיר ')) {
+            projectName = projectName.replace(/^הצעת מחיר /, '')
+          }
+          
           const fallbackProject = await prisma.project.create({
             data: {
               companyId: quote.companyId,
               clientId: lead.clientId,
-              name: quote.title || `פרויקט מ-${quote.quoteNumber}`,
+              name: projectName,
               description: quote.description,
               status: "PLANNING",
               budget: quote.total,
@@ -304,6 +320,18 @@ export async function POST(req: NextRequest) {
 
       // עדכון תשלום קיים - מעדכן גם projectId אם נוצר
       console.log(`Updating existing payment ${payment.id}, setting projectId to ${projectId || payment.projectId}`)
+      // אם יש פרויקט, נביא את clientId מהפרויקט
+      let finalClientId = payment.clientId
+      if (projectId && !finalClientId) {
+        const project = await prisma.project.findUnique({
+          where: { id: projectId },
+          select: { clientId: true },
+        })
+        if (project?.clientId) {
+          finalClientId = project.clientId
+        }
+      }
+
       payment = await prisma.payment.update({
         where: { id: payment.id },
         data: {
@@ -312,6 +340,7 @@ export async function POST(req: NextRequest) {
           transactionId: transactionUid || transactionId,
           paymentReference: approvalNum || undefined,
           projectId: projectId || payment.projectId, // עדכון projectId אם נוצר פרויקט
+          clientId: finalClientId || payment.clientId, // עדכון clientId אם יש
           quoteId: quote.id, // ודא שהתשלום מקושר להצעה
         },
       })
@@ -326,11 +355,19 @@ export async function POST(req: NextRequest) {
         })
         
         if (lead?.clientId) {
+          // הסרת "הצעת מחיר - " מהתחלה אם קיים
+          let projectName = quote.title || `פרויקט מ-${quote.quoteNumber}`
+          if (projectName.startsWith('הצעת מחיר - ')) {
+            projectName = projectName.replace(/^הצעת מחיר - /, '')
+          } else if (projectName.startsWith('הצעת מחיר ')) {
+            projectName = projectName.replace(/^הצעת מחיר /, '')
+          }
+          
           const emergencyProject = await prisma.project.create({
             data: {
               companyId: quote.companyId,
               clientId: lead.clientId,
-              name: quote.title || `פרויקט מ-${quote.quoteNumber}`,
+              name: projectName,
               description: quote.description,
               status: "PLANNING",
               budget: quote.total,
@@ -343,11 +380,27 @@ export async function POST(req: NextRequest) {
         }
       }
       
-      console.log(`Creating new payment for quote ${quote.quoteNumber}, projectId: ${projectId}, amount: ${amount}`)
+      // אם יש פרויקט, נביא את clientId מהפרויקט
+      let finalClientId: string | undefined = undefined
+      if (projectId) {
+        const project = await prisma.project.findUnique({
+          where: { id: projectId },
+          select: { clientId: true },
+        })
+        if (project?.clientId) {
+          finalClientId = project.clientId
+        }
+      } else if (quote.lead?.clientId) {
+        // אם אין פרויקט אבל יש לקוח לליד, נשתמש בו
+        finalClientId = quote.lead.clientId
+      }
+
+      console.log(`Creating new payment for quote ${quote.quoteNumber}, projectId: ${projectId}, clientId: ${finalClientId}, amount: ${amount}`)
       payment = await prisma.payment.create({
         data: {
           companyId: quote.companyId,
           projectId: projectId, // ודא שהתשלום מקושר לפרויקט
+          clientId: finalClientId, // ודא שהתשלום מקושר ללקוח
           quoteId: quote.id,
           amount,
           currency: "ILS",
